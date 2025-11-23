@@ -1,0 +1,8 @@
+/shelf/
+/workspace.xml
+/chatter/
+/.idea/*
+*.pyc
+*.pyo
+*.pyd
+*.log
