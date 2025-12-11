@@ -1,12 +1,12 @@
 import requests
 import streamlit as st
 
-from src.config import BACKEND_IP, BACKEND_PORT
-from ..infra.log.logger import logger
+from src.config import settings
+from src.infra.log.logger import logger
 
 
 # API基础URL
-API_BASE = f"http://{BACKEND_IP}:{BACKEND_PORT}"
+API_BASE = f"http://{settings.backend_ip}:{settings.backend_port}"
 
 
 def get_available_models():
@@ -16,7 +16,7 @@ def get_available_models():
         if response.status_code == 200:
             return response.json()["models"]
     except Exception as e:
-        logger.error("Failed to get available models: ", e)
+        logger.error("Failed to get available models: %s", e)
     return ["openai", "gemini", "llama", "qwen"]
 
 
@@ -29,7 +29,7 @@ def switch_model(model_name):
         )
         return response.status_code == 200
     except Exception as e:
-        logger.error("Failed to switch model: ", e)
+        logger.error("Failed to switch model: %s", e)
         return False
 
 
@@ -46,5 +46,5 @@ def send_message(message, use_tools=True):
         )
         return response.json() if response.status_code == 200 else None
     except Exception as e:
-        logger.error("Failed to send message to API: ", e)
-        return {"error": "Failed to send message to API."}
+        logger.error("Failed to send message to API: %s", e)
+        return None

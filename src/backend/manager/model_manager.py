@@ -5,7 +5,7 @@ from langchain_community.chat_models import ChatTongyi, ChatOpenAI, ChatOllama
 from langchain_core.messages import BaseMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from ...infra.log.logger import logger
+from src.infra.log.logger import logger
 
 
 class ModelManager:
@@ -108,4 +108,6 @@ class ModelManager:
             return response.content
         except Exception as e:
             logger.error(f"模型调用失败: {e}")
-            return f"模型调用失败: {model.model_name}"
+            # 使用当前模型名称而不是尝试访问可能不存在的属性
+            model_name = getattr(model, 'model_name', None) or getattr(model, 'model', None) or self.current_model
+            return f"模型调用失败: {model_name}"

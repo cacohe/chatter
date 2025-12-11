@@ -1,18 +1,18 @@
-from pathlib import Path
+import argparse
+import sys
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
 
 from src.backend.controller.chat_controller import AIChatController
+from src.config import settings
+from src.infra.log.logger import logger
 
 
 app = FastAPI(title="多模型AI聊天机器人")
-env_path = Path(__file__).parent.parent.parent.resolve() / ".env"
-load_dotenv(dotenv_path=env_path)
 
 
 # CORS中间件
@@ -99,9 +99,57 @@ async def clear_session(session_id: str):
     return {"success": True}
 
 
-def main():
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def main(host: str = None, port: int = None, reload: bool = False):
+    """
+    启动后端服务
+    
+    Args:
+        host: 监听地址，默认从配置读取
+        port: 监听端口，默认从配置读取
+        reload: 是否启用自动重载（开发模式）
+    """
+    host = host or settings.backend_host
+    port = port or settings.backend_port
+    
+    logger.info(f"启动后端服务: {host}:{port}")
+    logger.info(f"API文档地址: http://{host}:{port}/docs")
+    
+    uvicorn.run(
+        "src.backend.main:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info"
+    )
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="启动多模型AI聊天机器人后端服务")
+    parser.add_argument(
+        "--host",
+        type=str,
+        default=None,
+        help=f"监听地址（默认: {settings.backend_host}）"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help=f"监听端口（默认: {settings.backend_port}）"
+    )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="启用自动重载（开发模式）"
+    )
+    
+    args = parser.parse_args()
+    
+    try:
+        main(host=args.host, port=args.port, reload=args.reload)
+    except KeyboardInterrupt:
+        logger.info("服务已停止")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"启动失败: {e}")
+        sys.exit(1)

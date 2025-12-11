@@ -27,11 +27,11 @@ class AIChatController:
         if use_tools and self._needs_tool_assistance(user_input):
             tool_result = await self._handle_tool_calls(user_input)
 
-        # 准备完整的消息上下文
-        messages = self.context_manager.get_messages(session_id)
+        # 准备完整的消息上下文（创建副本以避免修改原始列表）
+        messages = self.context_manager.get_messages(session_id).copy()
 
         if tool_result:
-            # 将工具结果添加到上下文中
+            # 将工具结果添加到消息上下文中（仅用于本次模型调用）
             tool_message = f"工具调用结果: {tool_result}"
             messages.append(HumanMessage(content=f"基于以下信息回答问题: {tool_message}\n\n原始问题: {user_input}"))
 

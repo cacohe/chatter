@@ -48,5 +48,9 @@ class ContextManager:
     def clear_session(self, session_id: str):
         """清空会话历史"""
         if session_id in self.sessions:
-            system_msg = self.sessions[session_id][0]
-            self.sessions[session_id] = [system_msg]
+            # 如果会话存在且有 system message，保留它；否则重新初始化
+            if self.sessions[session_id] and isinstance(self.sessions[session_id][0], SystemMessage):
+                system_msg = self.sessions[session_id][0]
+                self.sessions[session_id] = [system_msg]
+            else:
+                self.initialize_session(session_id)

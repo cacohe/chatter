@@ -8,17 +8,12 @@ __pycache__/
 dist/
 build/
 *.egg
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
 
 # 虚拟环境
 venv/
 env/
 ENV/
 chatter/
-.venv
 
 # IDE
 .vscode/
@@ -26,23 +21,37 @@ chatter/
 *.swp
 *.swo
 *~
-.shelf/
-workspace.xml
 
 # 日志
 logs/
 *.log
-*.log.*
 
-# 环境变量（不忽略 .env.example）
+# 环境变量
 .env
 .env.local
 .env.*.local
-.env.development
-.env.production
-.env.test
 
-# 操作系统
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# 测试
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 文档
+*.md
+docs/
+
+# 其他
 .DS_Store
 Thumbs.db
 *.bak
@@ -52,7 +61,3 @@ Thumbs.db
 deploy/
 build_python/
 
-# 其他
-*.pyc
-*.pyo
-*.pyd

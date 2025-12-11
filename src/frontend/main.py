@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-from src.config import BACKEND_IP, BACKEND_PORT
+from src.config import settings
 from src.frontend.routes import get_available_models, send_message, switch_model
 
 
@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # API基础URL
-_API_BASE = f"http://{BACKEND_IP}:{BACKEND_PORT}"
+_API_BASE = f"http://{settings.backend_ip}:{settings.backend_port}"
 
 
 def initialize_session():
@@ -38,6 +38,10 @@ def main():
 
         # 模型选择
         available_models = get_available_models()
+        if not available_models:
+            st.warning("没有可用的模型，请检查后端服务")
+            available_models = [st.session_state.current_model] if st.session_state.current_model else ["qwen"]
+        
         current_model = st.selectbox(
             "选择AI模型",
             available_models,
@@ -105,7 +109,7 @@ def main():
                     if not st.session_state.session_id:
                         st.session_state.session_id = response["session_id"]
                 else:
-                    st.error("抱歉，请求失败，请检查后端服务是否正常运行")
+                    st.error("抱歉，请求大模型服务失败")
 
 
 if __name__ == "__main__":
