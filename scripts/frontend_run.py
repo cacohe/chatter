@@ -11,6 +11,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+from src.infra.log.logger import logger
+
 
 def main():
     """使用 streamlit run 命令启动前端服务"""
@@ -23,9 +25,9 @@ def main():
     
     # 验证文件是否存在
     if not frontend_main.exists():
-        print(f"错误: 找不到文件 {frontend_main}", file=sys.stderr)
-        print(f"当前工作目录: {Path.cwd()}", file=sys.stderr)
-        print(f"项目根目录: {project_root}", file=sys.stderr)
+        logger.error(f"错误: 找不到文件 {frontend_main}", file=sys.stderr)
+        logger.error(f"当前工作目录: {Path.cwd()}", file=sys.stderr)
+        logger.error(f"项目根目录: {project_root}", file=sys.stderr)
         sys.exit(1)
     
     # 切换到项目根目录（确保相对导入正常工作）
@@ -44,13 +46,13 @@ def main():
         # 使用 subprocess 运行 streamlit
         subprocess.run(cmd, check=True, cwd=str(project_root))
     except KeyboardInterrupt:
-        print("\n服务已停止")
+        logger.error("\n服务已停止")
         sys.exit(0)
     except subprocess.CalledProcessError as e:
-        print(f"启动失败: {e}", file=sys.stderr)
+        logger.error(f"启动失败: {e}", file=sys.stderr)
         sys.exit(1)
     except FileNotFoundError:
-        print("错误: 未找到 streamlit 命令，请确保已安装 streamlit", file=sys.stderr)
+        logger.error("错误: 未找到 streamlit 命令，请确保已安装 streamlit", file=sys.stderr)
         sys.exit(1)
     finally:
         # 恢复原始工作目录

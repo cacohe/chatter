@@ -17,7 +17,7 @@ COPY requirements.txt .
 
 # 复制应用代码
 COPY src/ ./src/
-COPY scripts/frontend_run.py ./frontend_run.py
+COPY scripts/frontend_run.py ./scripts/frontend_run.py
 
 # 安装系统依赖
 RUN sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources && \
@@ -36,5 +36,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)" || exit 1
 
 # 启动命令
-CMD ["python", "frontend_run.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["python", "scripts/frontend_run.py", "--server.port=8501", "--server.address=0.0.0.0"]
 

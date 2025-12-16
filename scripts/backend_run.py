@@ -11,9 +11,24 @@
 或者直接运行:
     python -m src.backend.main
 """
+from pathlib import Path
+
+from dotenv import load_dotenv
+
 # 直接导入并运行，main 模块会处理命令行参数
 from src.backend.main import main
 from src.infra.log.logger import logger
+
+from pathlib import Path
+
+from dotenv import load_dotenv
+# 加载 .env 文件（如果存在）
+env_path = Path(__file__).parent.parent.resolve() / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path, override=False)
+    logger.info(f"Loaded environment variables from {env_path}")
+else:
+    logger.warning(f"No environment variables file found at {env_path}")
 
 
 if __name__ == "__main__":
