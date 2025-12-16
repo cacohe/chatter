@@ -3,10 +3,15 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import os
 
+from src.infra.log.logger import logger
 
 # 加载 .env 文件（如果存在）
 env_path = Path(__file__).parent.parent.resolve() / ".env"
-load_dotenv(dotenv_path=env_path, override=False)
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path, override=False)
+    logger.info(f"Loaded environment variables from {env_path}")
+else:
+    logger.warning(f"No environment variables file found at {env_path}")
 
 
 class Settings(BaseModel):

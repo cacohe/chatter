@@ -68,7 +68,7 @@ install_docker() {
         
         # 添加Docker官方GPG密钥
         install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        curl --http1.1 -fsSL --retry 3 https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         chmod a+r /etc/apt/keyrings/docker.gpg
         
         # 添加Docker仓库
@@ -121,25 +121,6 @@ EOF
     systemctl restart docker
     
     info "Docker 安装完成: $(docker --version)"
-}
-
-# 安装Docker Compose（独立版本）
-install_docker_compose() {
-    if command -v docker-compose &> /dev/null; then
-        info "Docker Compose 已安装: $(docker-compose --version)"
-        return
-    fi
-    
-    info "安装 Docker Compose..."
-    
-    # 下载最新版本
-    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
-    curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    
-    chmod +x /usr/local/bin/docker-compose
-    ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
-    
-    info "Docker Compose 安装完成: $(docker-compose --version)"
 }
 
 # 安装Nginx
@@ -242,18 +223,37 @@ start_services() {
     
     # 构建镜像
     info "构建Docker镜像..."
-    docker-compose build
+    docker compose build
     
     # 启动服务
     info "启动服务..."
-    docker-compose up -d
+    docker compose up -d
     
     # 等待服务启动
     sleep 5
     
     # 检查服务状态
     info "检查服务状态..."
-    docker-compose ps
+    if ! docker compose ps; then
+        error "服务状态检查失败，请确认Docker服务是否正常运行"
+        exit 1
+    fi
+
+    # 检查服务健康状态
+    info "检查服务健康状态..."
+    HEALTHY_SERVICES=$(docker compose ps --filter "status=running" --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || echo "0")
+    TOTAL_SERVICES=$(docker compose config --services | wc -l)
+
+    if [ "$HEALTHY_SERVICES" -eq "$TOTAL_SERVICES" ] && [ "$TOTAL_SERVICES" -gt 0 ]; then
+        info "所有服务运行正常 ($HEALTHY_SERVICES/$TOTAL_SERVICES)"
+    else
+        warn "部分服务未正常运行 ($HEALTHY_SERVICES/$TOTAL_SERVICES)"
+        info "详细服务状态:"
+        docker compose ps --format "table {{.Service}}\t{{.Status}}"
+        # 打印最近的日志信息
+        info "最近的服务日志:"
+        docker compose logs --tail=20
+    fi
     
     info "服务启动完成！"
 }
@@ -328,7 +328,6 @@ EOF
 main() {
     detect_os
     install_docker
-    install_docker_compose
     install_nginx
     configure_firewall
     setup_project_dir

@@ -10,7 +10,10 @@ host_name = socket.gethostname()
 formatter = logging.Formatter('%(asctime)s\t%(levelname)s\t' + host_name +
                               '\t%(message)s\t[%(filename)s]\t[%(lineno)d]')
 
-logs_path = os.path.join(os.getcwd(), 'logs')
+if os.getenv('LOG_PATH'):
+    logs_path = os.getenv('LOG_PATH')
+else:
+    logs_path = os.path.join(os.getcwd(), 'logs')
 if not os.path.exists(logs_path):
     os.makedirs(logs_path)
 

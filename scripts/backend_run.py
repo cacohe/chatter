@@ -13,6 +13,8 @@
 """
 # 直接导入并运行，main 模块会处理命令行参数
 from src.backend.main import main
+from src.infra.log.logger import logger
+
 
 if __name__ == "__main__":
     # 直接调用，main 函数在模块的 __main__ 块中已经处理了命令行参数
@@ -45,8 +47,8 @@ if __name__ == "__main__":
     try:
         main(host=args.host, port=args.port, reload=args.reload)
     except KeyboardInterrupt:
-        print("\n服务已停止")
+        logger.error("\n服务已停止")
         sys.exit(0)
     except Exception as e:
-        print(f"启动失败: {e}", file=sys.stderr)
+        logger.error(f"启动失败: {e}", file=sys.stderr)
         sys.exit(1)

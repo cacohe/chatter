@@ -113,8 +113,15 @@ docker --version
 #### 安装 Docker Compose
 
 ```bash
-# 下载Docker Compose
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+# 下载Docker Compose（使用 HTTP/1.1 避免协议错误，添加重试机制）
+curl --http1.1 -L --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 \
+  "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/local/bin/docker-compose
+
+# 如果上述命令失败，可以尝试使用备用镜像源：
+# curl --http1.1 -L --retry 3 \
+#   "https://get.daocloud.io/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+#   -o /usr/local/bin/docker-compose
 
 # 添加执行权限
 chmod +x /usr/local/bin/docker-compose
@@ -125,6 +132,11 @@ ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 # 验证安装
 docker-compose --version
 ```
+
+**注意：** 如果遇到 `curl: (92) HTTP/2 stream was not closed cleanly: PROTOCOL_ERROR` 错误：
+- 使用 `--http1.1` 参数强制使用 HTTP/1.1 协议
+- 添加 `--retry` 参数自动重试
+- 如果 GitHub 访问困难，可以使用备用镜像源（如 daocloud.io）
 
 ### 2.4 配置Docker镜像加速（阿里云）
 

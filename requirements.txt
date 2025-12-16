@@ -17,6 +17,7 @@ langchain-google-genai==3.1.0
 # 模型支持
 openai==2.8.1
 ollama-python==0.1.2
+dashscope
 
 # 工具和工具包
 httpx==0.26.0
