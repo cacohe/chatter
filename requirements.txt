@@ -4,6 +4,16 @@ fastapi==0.121.2
 uvicorn[standard]==0.24.0
 starlette==0.49.3
 
+# 数据库和ORM
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# 认证和安全
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+
 # 前端框架
 streamlit==1.52.1
 
