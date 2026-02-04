@@ -1,24 +1,4 @@
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: chatter-postgres
-    environment:
-      - POSTGRES_USER=chatter
-      - POSTGRES_PASSWORD=chatter
-      - POSTGRES_DB=chatter
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatter"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - chatter-network
-
   backend:
     build:
       context: ..
@@ -30,12 +10,6 @@ services:
       - BACKEND_HOST=0.0.0.0
       - BACKEND_PORT=8000
       - BACKEND_IP=backend
-      - DATABASE_URL=postgresql://chatter:chatter@postgres:5432/chatter
-      - DATABASE_ECHO=false
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this-in-production}
-      - JWT_ALGORITHM=HS256
-      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
@@ -43,12 +17,9 @@ services:
       - BING_SUBSCRIPTION_KEY=${BING_SUBSCRIPTION_KEY:-}
     volumes:
       - ../logs:/app/logs
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,7 +55,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
-    driver: local
   logs:
     driver: local
+
