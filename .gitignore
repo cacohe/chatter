@@ -17,7 +17,7 @@ htmlcov/
 venv/
 env/
 ENV/
-chatter/
+.chatter/
 .venv
 
 # IDE

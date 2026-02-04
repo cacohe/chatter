@@ -11,7 +11,7 @@ from src.backend.database import init_db
 from src.backend.routes import auth, session, chat
 
 
-app = FastAPI(title="多模型AI聊天机器人")
+app = FastAPI(title="Cacohe")
 
 
 # CORS中间件

@@ -1,14 +1,21 @@
 """
 前端服务启动脚本
 
-使用方法:
-    python frontend_run.py                    # 使用默认配置
-    python frontend_run.py --port 8502         # 指定端口
-    python frontend_run.py --server.address 0.0.0.0  # 指定监听地址
-    python frontend_run.py --server.headless true    # 无浏览器模式
+该脚本封装了 streamlit 启动逻辑，确保在正确的项目根目录下运行，并自动处理 Windows 路径兼容性。
+
+使用方法 (推荐在项目根目录下执行):
+    python -m scripts.frontend_run                    # 使用默认配置启动
+    python -m scripts.frontend_run --port 8502         # 指定端口
+    python -m scripts.frontend_run --server.address 0.0.0.0  # 指定监听地址
+    python -m scripts.frontend_run --server.headless true    # 无浏览器模式运行
+
+注意:
+    所有附加参数都会原封不动地透传给 `streamlit run` 命令。
 """
 import sys
+import os
 import subprocess
+import shutil
 from pathlib import Path
 
 from src.infra.log.logger import logger
@@ -16,47 +23,59 @@ from src.infra.log.logger import logger
 
 def main():
     """使用 streamlit run 命令启动前端服务"""
-    # 获取项目根目录（脚本在 scripts/ 目录下，需要向上一级）
-    script_dir = Path(__file__).parent
+    # 1. 确定项目根目录
+    # 无论从哪调用，以当前文件位置为基准向上推一级是最稳妥的
+    script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
-    
-    # 获取前端主文件路径（从项目根目录）
+
+    # 2. 获取前端主文件路径
     frontend_main = project_root / "src" / "frontend" / "main.py"
-    
-    # 验证文件是否存在
+
+    # 3. 验证前端主文件是否存在
     if not frontend_main.exists():
-        logger.error(f"错误: 找不到文件 {frontend_main}", file=sys.stderr)
-        logger.error(f"当前工作目录: {Path.cwd()}", file=sys.stderr)
-        logger.error(f"项目根目录: {project_root}", file=sys.stderr)
+        logger.error(f"找不到前端入口文件: {frontend_main}")
+        logger.info(f"项目根目录探测为: {project_root}")
         sys.exit(1)
-    
-    # 切换到项目根目录（确保相对导入正常工作）
-    import os
-    original_cwd = os.getcwd()
-    os.chdir(project_root)
-    
+
+    # 4. 寻找 streamlit 执行路径 (解决 Windows 环境下的 FileNotFoundError)
+    streamlit_path = shutil.which("streamlit")
+    if not streamlit_path:
+        logger.error("未找到 streamlit 命令。请确保已安装 streamlit 并在虚拟环境中运行。")
+        sys.exit(1)
+
+    # 5. 构建命令
+    # 使用 streamlit_path 替代字符串 "streamlit" 更健壮
+    cmd = [streamlit_path, "run", str(frontend_main.resolve())]
+
+    # 透传剩余参数
+    if len(sys.argv) > 1:
+        cmd.extend(sys.argv[1:])
+
+    logger.info(f"正在启动前端服务: {' '.join(cmd)}")
+
+    env = os.environ.copy()
+    # 将当前项目根目录加入 PYTHONPATH
+    env["PYTHONPATH"] = str(project_root) + os.pathsep + env.get("PYTHONPATH", "")
+
     try:
-        # 构建 streamlit run 命令（使用绝对路径更可靠）
-        cmd = ["streamlit", "run", str(frontend_main.resolve())]
-        
-        # 添加命令行参数
-        if len(sys.argv) > 1:
-            cmd.extend(sys.argv[1:])
-        
-        # 使用 subprocess 运行 streamlit
-        subprocess.run(cmd, check=True, cwd=str(project_root))
+        # 6. 核心：运行子进程
+        # shell=True 在 Windows 上能更好地解析 PATH 里的脚本
+        # env=os.environ 确保环境变量透传
+        subprocess.run(
+            cmd,
+            check=True,
+            cwd=str(project_root),
+            env=env,
+            shell=(os.name == 'nt')  # 仅在 Windows 上开启 shell 模式
+        )
     except KeyboardInterrupt:
-        logger.error("\n服务已停止")
-        sys.exit(0)
+        logger.info("用户请求停止服务 (KeyboardInterrupt)")
     except subprocess.CalledProcessError as e:
-        logger.error(f"启动失败: {e}", file=sys.stderr)
+        logger.error(f"Streamlit 进程异常退出: {e}")
         sys.exit(1)
-    except FileNotFoundError:
-        logger.error("错误: 未找到 streamlit 命令，请确保已安装 streamlit", file=sys.stderr)
+    except Exception as e:
+        logger.error(f"启动过程中发生未知错误: {e}")
         sys.exit(1)
-    finally:
-        # 恢复原始工作目录
-        os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

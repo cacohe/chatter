@@ -22,8 +22,8 @@ from src.infra.log.logger import logger
 from pathlib import Path
 
 from dotenv import load_dotenv
-# 加载 .env 文件（如果存在）
-env_path = Path(__file__).parent.parent.resolve() / ".env"
+# 加载 .env.local 文件（如果存在）
+env_path = Path(__file__).parent.parent.resolve() / ".env.local"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path, override=False)
     logger.info(f"Loaded environment variables from {env_path}")

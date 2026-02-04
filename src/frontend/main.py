@@ -1,115 +1,54 @@
 import streamlit as st
-import requests
-
-from src.config import settings
-from src.frontend.routes import get_available_models, send_message, switch_model
-
-
-st.set_page_config(
-    page_title="多模型AI聊天助手",
-    page_icon="😁",
-    layout="wide"
-)
-
-# API基础URL
-_API_BASE = f"http://{settings.backend_ip}:{settings.backend_port}"
+from src.frontend.state import state_manager
+from src.frontend.components.sidebar import render_sidebar
+from src.frontend.api_client import backend_api_client
 
 
-def initialize_session():
-    """初始化会话状态"""
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = None
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "current_model" not in st.session_state:
-        st.session_state.current_model = "qwen"
+# 页面配置
+st.set_page_config(page_title="Cacohe", layout="wide")
+
+
+def render_welcome_screen():
+    """渲染未对话时的欢迎界面"""
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>你好，我是 Cacohe</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>我可以帮你写代码、答疑解惑或提供创意建议。</p>",
+                unsafe_allow_html=True)
+
+
+def handle_user_input():
+    """处理核心交互逻辑"""
+    prompt = st.chat_input("在 Cacohe 中输入内容...", disabled=not st.session_state.current_model)
+
+    if prompt:
+        # 1. 用户端展示
+        state_manager.add_message("user", prompt)
+        st.rerun()  # 立即刷新展示用户消息
 
 
 def main():
-    """主界面"""
-    st.title("😀 多模型AI聊天机器人")
-    st.markdown("支持多模型切换、联网搜索和自定义MCP工具调用")
+    state_manager.init()
+    render_sidebar()
 
-    initialize_session()
+    # 展示逻辑
+    if not state_manager.messages:
+        render_welcome_screen()
+    else:
+        for msg in state_manager.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-    # 侧边栏
-    with st.sidebar:
-        st.header("配置")
+    # 逻辑判断：是否需要生成 AI 回复
+    if state_manager.messages and state_manager.messages[-1]["role"] == "user":
+        with st.chat_message("assistant", avatar="✨"):
+            stream = backend_api_client.chat_stream(
+                prompt=state_manager.messages[-1]["content"],
+                model=st.session_state.current_model
+            )
+            full_response = st.write_stream(stream)
+            state_manager.add_message("assistant", full_response)
 
-        # 模型选择
-        available_models = get_available_models()
-        if not available_models:
-            st.warning("没有可用的模型，请检查后端服务")
-            available_models = [st.session_state.current_model] if st.session_state.current_model else ["qwen"]
-        
-        current_model = st.selectbox(
-            "选择AI模型",
-            available_models,
-            index=available_models.index(st.session_state.current_model)
-            if st.session_state.current_model in available_models else 0
-        )
-
-        if current_model != st.session_state.current_model:
-            if switch_model(current_model):
-                st.session_state.current_model = current_model
-                st.success(f"已切换到 {current_model} 模型")
-            else:
-                st.error("模型切换失败")
-
-        # 工具设置
-        st.subheader("工具设置")
-        use_tools = st.checkbox("启用联网搜索", value=True)
-        use_mcp = st.checkbox("启用MCP工具", value=True)
-
-        # 会话管理
-        st.subheader("会话管理")
-        if st.button("清空对话历史"):
-            if st.session_state.session_id:
-                requests.post(f"{_API_BASE}/sessions/{st.session_state.session_id}/clear")
-            st.session_state.messages = []
-            st.session_state.session_id = None
-            st.rerun()
-
-    # 聊天主界面
-    chat_container = st.container()
-
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                if "model" in message:
-                    st.caption(f"模型: {message['model']}")
-
-    # 用户输入
-    if prompt := st.chat_input("请输入您的问题..."):
-        # 添加用户消息
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # 获取AI回复
-        with st.chat_message("assistant"):
-            with st.spinner("思考中..."):
-                response = send_message(prompt, use_tools=use_tools or use_mcp)
-
-                if response:
-                    st.markdown(response["response"])
-                    if response["tools_used"]:
-                        st.caption("🔧 已使用工具获取信息")
-                    st.caption(f"模型: {response['model_used']}")
-
-                    # 添加AI回复到历史
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": response["response"],
-                        "model": response["model_used"]
-                    })
-
-                    # 更新会话ID
-                    if not st.session_state.session_id:
-                        st.session_state.session_id = response["session_id"]
-                else:
-                    st.error("抱歉，请求大模型服务失败")
+    handle_user_input()
 
 
 if __name__ == "__main__":

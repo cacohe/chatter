@@ -8,12 +8,13 @@ __pycache__/
 dist/
 build/
 *.egg
+*.pyc
 
 # 虚拟环境
 venv/
 env/
 ENV/
-chatter/
+.chatter/*
 
 # IDE
 .vscode/
