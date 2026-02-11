@@ -39,3 +39,8 @@ python-dateutil==2.9.0.post0
 pytz==2025.2
 PyYAML==6.0.3
 tqdm==4.67.1
+
+pytest
+protobuf
+pydantic-settings
+supabase

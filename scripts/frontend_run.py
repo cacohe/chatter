@@ -18,11 +18,13 @@ import subprocess
 import shutil
 from pathlib import Path
 
-from src.infra.log.logger import logger
+from src.shared.logger import logger
+from src.shared.utils import load_env
 
 
 def main():
     """使用 streamlit run 命令启动前端服务"""
+    load_env()
     # 1. 确定项目根目录
     # 无论从哪调用，以当前文件位置为基准向上推一级是最稳妥的
     script_dir = Path(__file__).resolve().parent

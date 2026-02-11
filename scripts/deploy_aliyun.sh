@@ -157,9 +157,9 @@ configure_firewall() {
         info "UFW 防火墙已配置"
     elif command -v firewall-cmd &> /dev/null; then
         # CentOS/RHEL
-        firewall-cmd --permanent --add-service=ssh
-        firewall-cmd --permanent --add-service=http
-        firewall-cmd --permanent --add-service=https
+        firewall-cmd --permanent --add-services=ssh
+        firewall-cmd --permanent --add-services=http
+        firewall-cmd --permanent --add-services=https
         firewall-cmd --reload
         info "Firewalld 防火墙已配置"
     else
