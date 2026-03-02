@@ -14,4 +14,4 @@ def load_env(env_path=None):
         logger.info(f"Loaded environment variables from {env_path}")
     else:
         logger.warning(f"No environment variables file found at {env_path}")
-        sys.exit(1)
+        # sys.exit(1)
