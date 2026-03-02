@@ -1,5 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
 
 from src.shared.config import settings
 from src.backend.api.routes.auth import auth_router
@@ -32,6 +33,13 @@ def _create_app() -> FastAPI:
 
 
 app = _create_app()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # 生产环境建议填具体的 streamlit 域名
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def main():
