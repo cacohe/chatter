@@ -4,14 +4,11 @@ import sys
 from pathlib import Path
 
 from src.shared.logger import logger
-from src.shared.utils import load_env
 
 
 def main():
-    # 1. 确定项目根目录
-    # 无论从哪调用，以当前文件位置为基准向上推一级是最稳妥的
     script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parent
+    project_root = script_dir
 
     # 2. 获取前端主文件路径
     frontend_main = project_root / "src" / "backend" / "main.py"

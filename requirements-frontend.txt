@@ -1,0 +1,8 @@
+uuid~=1.30
+pydantic~=2.12.4
+python-dotenv~=1.0.0
+pydantic-settings~=2.13.1
+pydantic[email]
+uvicorn~=0.24.0
+streamlit~=1.52.1
+requests~=2.32.5

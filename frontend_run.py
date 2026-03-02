@@ -1,17 +1,3 @@
-"""
-前端服务启动脚本
-
-该脚本封装了 streamlit 启动逻辑，确保在正确的项目根目录下运行，并自动处理 Windows 路径兼容性。
-
-使用方法 (推荐在项目根目录下执行):
-    python -m scripts.frontend_run                    # 使用默认配置启动
-    python -m scripts.frontend_run --port 8502         # 指定端口
-    python -m scripts.frontend_run --server.address 0.0.0.0  # 指定监听地址
-    python -m scripts.frontend_run --server.headless true    # 无浏览器模式运行
-
-注意:
-    所有附加参数都会原封不动地透传给 `streamlit run` 命令。
-"""
 import sys
 import os
 import subprocess
@@ -28,7 +14,7 @@ def main():
     # 1. 确定项目根目录
     # 无论从哪调用，以当前文件位置为基准向上推一级是最稳妥的
     script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parent
+    project_root = script_dir
 
     # 2. 获取前端主文件路径
     frontend_main = project_root / "src" / "frontend" / "main.py"
