@@ -10,6 +10,7 @@ from src.frontend.states.user import user_state
 from src.shared.logger import logger
 from src.shared.schemas import chat as chat_schema
 from src.shared.schemas import session as session_schema
+from src.shared.config import settings
 
 
 class SessionLogic:
@@ -93,16 +94,43 @@ class SessionLogic:
             user_state.add_session(session)
             self._rename_session_title(session_id, content)
 
+    def _get_history_for_api(self) -> list:
+        """获取历史消息列表，用于传递给 API 实现记忆功能"""
+        messages = session_state.messages
+        if not messages:
+            return []
+
+        history = []
+        max_history = (
+            getattr(settings.llm_settings, "max_history_messages", 10)
+            if hasattr(settings, "llm_settings")
+            else 10
+        )
+
+        for msg in messages[-max_history:]:
+            history.append(
+                {
+                    "session_id": str(session_state.session_id)
+                    if session_state.session_id
+                    else "",
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", ""),
+                }
+            )
+        return history
+
     def chat_non_stream(self, content) -> str:
         try:
             self._handle_new_session(content)
 
             self._add_message(role=chat_schema.MessageRole.USER, content=content)
 
+            history = self._get_history_for_api()
             response = backend_api_client.session.chat_non_stream(
                 session_id=session_state.session_id,
                 content=content,
                 model_id=session_state.current_model_id,
+                history=history,
             )
             if response.status_code == 200:
                 response_content = response.json().get("content")
@@ -124,10 +152,12 @@ class SessionLogic:
         try:
             self._handle_new_session(content)
 
+            history = self._get_history_for_api()
             response = backend_api_client.session.chat_stream(
                 session_id=session_state.session_id,
                 content=content,
                 model_id=session_state.current_model_id,
+                history=history,
             )
             if response.status_code == 200:
                 for line in response.iter_lines():

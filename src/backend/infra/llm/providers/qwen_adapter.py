@@ -46,7 +46,9 @@ class QwenAdapter(BaseLLM):
         for m in messages:
             if isinstance(m, Message):
                 formatted_messages.append(m)
-            if isinstance(m, str):
+            elif isinstance(m, ChatMessage):
+                formatted_messages.append(Message(role=m.role, content=m.content))
+            elif isinstance(m, str):
                 formatted_messages.append(Message(role="user", content=m))
         if not params:
             params = LLMParameters()
@@ -58,7 +60,7 @@ class QwenAdapter(BaseLLM):
     ):
         if self._is_mm:
             logger.warning("Multimodal models are not supported.")
-            raise Exception('Multimodal model not supported!')
+            raise Exception("Multimodal model not supported!")
             # TODO: 支持多模态模型调用
             # return dashscope.MultiModalConversation.call(
             #     model=self.model_id,

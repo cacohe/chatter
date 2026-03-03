@@ -12,6 +12,9 @@ class _LLMSettings(BaseSettings):
     openai_api_key: str = Field(default="")
     gemini_api_key: str = Field(default="")
     deepseek_api_key: str = Field(default="")
+    max_history_messages: int = Field(
+        default=10, description="最大历史消息数，用于控制上下文长度"
+    )
 
 
 class _DatabaseSettings(BaseSettings):

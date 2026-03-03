@@ -1,13 +1,13 @@
 import datetime
 import uuid
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, List
 from src.backend.domain.repository_interfaces.chat import IChatRepository
 from src.backend.domain.repository_interfaces.session import ISessionRepository
 from src.shared.schemas import chat as chat_schema
 from src.backend.domain.exceptions import BusinessException
 from src.backend.infra.llm.factory import LLMFactory
 from src.backend.infra.llm.registry import ModelRegistry
-from src.backend.infra.llm.schema import LLMParameters
+from src.backend.infra.llm.schema import LLMParameters, ChatMessage
 from src.shared.config import settings
 from src.shared.logger import logger
 
@@ -16,6 +16,15 @@ class ChatService:
     def __init__(self, chat_repo: IChatRepository, session_repo: ISessionRepository):
         self.chat_repo = chat_repo
         self.session_repo = session_repo
+
+    @property
+    def max_history_messages(self) -> int:
+        """最大历史消息数，用于控制上下文长度"""
+        return (
+            getattr(settings, "llm_settings", None).max_history_messages
+            if hasattr(settings, "llm_settings")
+            else 10
+        )
 
     async def _is_logged_in_user(self, request: chat_schema.ChatRequest) -> bool:
         try:
@@ -51,10 +60,8 @@ class ChatService:
         model_id = request.model_id
 
         if not model_id:
-            # 如果前端没传，去数据库查这个 session 绑定的模型
             model_id = self.get_model_id_by_session_id(session_id=request.session_id)
 
-        # 校验该模型是否在注册中心
         target_model = (
             model_id
             if ModelRegistry.exists(model_id)
@@ -63,6 +70,50 @@ class ChatService:
 
         llm = LLMFactory.get_instance(target_model)
         return llm
+
+    async def get_conversation_history(
+        self, session_id: uuid.UUID
+    ) -> List[ChatMessage]:
+        """获取对话历史消息，转换为 LLM 需要的格式"""
+        try:
+            recent_messages = await self.chat_repo.get_recent_messages(
+                session_id=session_id, limit=self.max_history_messages
+            )
+
+            history = []
+            for msg in recent_messages:
+                role = (
+                    "user" if msg.role == chat_schema.MessageRole.USER else "assistant"
+                )
+                history.append(ChatMessage(role=role, content=msg.content))
+
+            return history
+        except Exception as e:
+            logger.warning(f"Failed to get conversation history: {e}")
+            return []
+
+    def _build_messages_with_history(
+        self, current_content: str, history: List[ChatMessage]
+    ) -> List[ChatMessage]:
+        """将历史消息和当前消息组合成完整的消息列表"""
+        messages = history + [ChatMessage(role="user", content=current_content)]
+        return messages
+
+    def _get_history_from_request(
+        self, request: chat_schema.ChatRequest
+    ) -> List[ChatMessage]:
+        """从请求中获取历史消息，转换为 ChatMessage 格式"""
+        if not request.history:
+            return []
+
+        history = []
+        for msg in request.history:
+            role = msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+            role = role.lower()
+            if role not in ["user", "assistant"]:
+                continue
+            history.append(ChatMessage(role=role, content=msg.content))
+        return history
 
     async def handle_chat(
         self, request: chat_schema.ChatRequest
@@ -90,9 +141,14 @@ class ChatService:
                     )
                     await self.session_repo.update_title(request.session_id, title)
 
+            history = self._get_history_from_request(request)
+            if not history:
+                history = await self.get_conversation_history(request.session_id)
+
             llm = await self.get_llm(request)
             params = LLMParameters()
-            ai_content = await llm.chat(messages=request.content, params=params)
+            messages = self._build_messages_with_history(request.content, history)
+            ai_content = await llm.chat(messages=messages, params=params)
 
             ai_msg = None
             if is_logged_in:
@@ -141,11 +197,16 @@ class ChatService:
                     )
                     await self.session_repo.update_title(request.session_id, title)
 
+            history = self._get_history_from_request(request)
+            if not history:
+                history = await self.get_conversation_history(request.session_id)
+
             llm = await self.get_llm(request)
             params = LLMParameters()
+            messages = self._build_messages_with_history(request.content, history)
 
             full_content = ""
-            async for chunk in llm.stream_chat(messages=request.content, params=params):
+            async for chunk in llm.stream_chat(messages=messages, params=params):
                 full_content += chunk
                 yield chunk
 

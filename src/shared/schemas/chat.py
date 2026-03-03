@@ -23,6 +23,9 @@ class ChatRequest(BaseModel):
     session_id: uuid.UUID = Field(..., description="所属会话的 ID")
     content: str = Field(..., min_length=1, max_length=4000, description="消息内容")
     model_id: Optional[str] = None
+    history: Optional[List[ChatMessage]] = Field(
+        default_factory=list, description="历史消息列表，用于实现上下文记忆"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -30,6 +33,14 @@ class ChatRequest(BaseModel):
                 "session_id": 1024,
                 "content": "你好，请帮我写一个 Python 脚本。",
                 "model_id": "qwen",
+                "history": [
+                    {"session_id": 1024, "role": "user", "content": "你好"},
+                    {
+                        "session_id": 1024,
+                        "role": "assistant",
+                        "content": "你好！有什么可以帮你的吗？",
+                    },
+                ],
             }
         }
     )

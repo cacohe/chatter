@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Dict
 import uuid
 
 import requests
@@ -25,26 +25,36 @@ class SessionClients:
         return requests.post(url, json=payload, headers=self._get_headers())
 
     def chat_non_stream(
-        self, session_id: uuid.UUID, content: str, model_id: Optional[str] = None
+        self,
+        session_id: uuid.UUID,
+        content: str,
+        model_id: Optional[str] = None,
+        history: Optional[List[Dict]] = None,
     ) -> Response:
         """发送消息并获取非流式响应"""
         payload = {
             "session_id": str(session_id),
             "content": content,
             "model_id": model_id,
+            "history": history or [],
         }
         return requests.post(
             f"{self.chat_url}", json=payload, headers=self._get_headers(), stream=False
         )
 
     def chat_stream(
-        self, session_id: uuid.UUID, content: str, model_id: Optional[str] = None
+        self,
+        session_id: uuid.UUID,
+        content: str,
+        model_id: Optional[str] = None,
+        history: Optional[List[Dict]] = None,
     ) -> Response:
         """发送消息并获取流式响应"""
         payload = {
             "session_id": str(session_id),
             "content": content,
             "model_id": model_id,
+            "history": history or [],
         }
 
         return requests.post(
