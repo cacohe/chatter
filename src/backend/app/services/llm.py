@@ -17,7 +17,7 @@ class LLMService:
         # 从注册中心获取所有已注册的模型 ID（只返回已配置 API Key 的模型）
         available_model_ids = ModelRegistry.get_available_model_ids()
 
-        # 业务逻辑：如果是高级模型，可以在此处根据用户权限进行过滤（逻辑略）
+        # TODO 业务逻辑：如果是高级模型，可以在此处根据用户权限进行过滤（逻辑略）
 
         # 将字符串转换为 LLMInfo 对象
         models = []
@@ -26,7 +26,7 @@ class LLMService:
                 models.append(
                     llm_schema.LLMInfo(
                         id=model_id,
-                        name=model_id.upper(),
+                        name=ModelRegistry.get_model_name(model_id),
                         provider=llm_schema.ModelProvider.OPENAI,
                         is_active=(model_id == settings.llm_settings.default_llm),
                     )
@@ -35,7 +35,7 @@ class LLMService:
                 models.append(
                     llm_schema.LLMInfo(
                         id=model_id,
-                        name=model_id.replace("-", " ").title(),
+                        name=ModelRegistry.get_model_name(model_id),
                         provider=llm_schema.ModelProvider.GOOGLE,
                         is_active=(model_id == settings.llm_settings.default_llm),
                     )
@@ -44,29 +44,16 @@ class LLMService:
                 models.append(
                     llm_schema.LLMInfo(
                         id=model_id,
-                        name=model_id.replace("-", " ").title(),
+                        name=ModelRegistry.get_model_name(model_id),
                         provider=llm_schema.ModelProvider.DEEPSEEK,
                         is_active=(model_id == settings.llm_settings.default_llm),
                     )
                 )
             elif model_id.startswith("qwen"):
-                display_name = (
-                    model_id.replace("qwen", "Qwen ")
-                    .replace(".", "-")
-                    .title()
-                    .replace("-", ".")
-                    .strip()
-                )
-                if model_id == "qwen3.5-plus":
-                    display_name = "Qwen 3.5 Plus"
-                elif model_id == "qwen3.5-flash":
-                    display_name = "Qwen 3.5 Flash"
-                elif model_id == "qwen-flash-character":
-                    display_name = "Qwen Flash Character"
                 models.append(
                     llm_schema.LLMInfo(
                         id=model_id,
-                        name=display_name,
+                        name=ModelRegistry.get_model_name(model_id),
                         provider=llm_schema.ModelProvider.OPENAI,
                         is_active=(model_id == settings.llm_settings.default_llm),
                     )
@@ -75,7 +62,7 @@ class LLMService:
                 models.append(
                     llm_schema.LLMInfo(
                         id=model_id,
-                        name=model_id.upper(),
+                        name=ModelRegistry.get_model_name(model_id),
                         provider=llm_schema.ModelProvider.LOCAL,
                         is_active=(model_id == settings.llm_settings.default_llm),
                     )

@@ -16,8 +16,7 @@ class ModelRegistry:
         "gemini-1.5-pro": GeminiAdapter,
         "deepseek-chat": OpenAIAdapter,  # 兼容 OpenAI 格式
         "qwen-flash-character": QwenAdapter,
-        "qwen3.5-flash": QwenAdapter,
-        "qwen3.5-plus": QwenAdapter,
+        "qwen3-max-2026-01-23": QwenAdapter,
     }
 
     _api_key_map = {
@@ -26,8 +25,16 @@ class ModelRegistry:
         "gemini-1.5-pro": "gemini_api_key",
         "deepseek-chat": "deepseek_api_key",
         "qwen-flash-character": "dashscope_api_key",
-        "qwen3.5-flash": "dashscope_api_key",
-        "qwen3.5-plus": "dashscope_api_key",
+        "qwen3-max-2026-01-23": "dashscope_api_key",
+    }
+
+    _model_id_to_name_mapping: Dict[str, str] = {
+        "gpt-4o": "GPT-4O",
+        "gpt-3.5-turbo": "GPT-3.5-TURBO",
+        "gemini-1.5-pro": "Gemini-1.5-Pro",
+        "deepseek-chat": "DeepSeek-Chat",
+        "qwen-flash-character": "Qwen-Flash",
+        "qwen3-max-2026-01-23": "Qwen-Max",
     }
 
     @classmethod
@@ -38,8 +45,8 @@ class ModelRegistry:
         return adapter_cls
 
     @classmethod
-    def exists(cls, target_model):
-        return target_model in cls._mapping
+    def exists(cls, target_model_id):
+        return target_model_id in cls._mapping
 
     @classmethod
     def get_all_model_ids(cls):
@@ -66,3 +73,7 @@ class ModelRegistry:
             if cls.is_model_available(model_id):
                 available.append(model_id)
         return available
+
+    @classmethod
+    def get_model_name(cls, model_id: str) -> str:
+        return cls._model_id_to_name_mapping.get(model_id, model_id.upper())

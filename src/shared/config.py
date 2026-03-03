@@ -7,7 +7,7 @@ from src.shared.utils import load_env
 
 
 class _LLMSettings(BaseSettings):
-    default_llm: str = Field(default="qwen3.5-plus", description="默认模型名称")
+    default_llm: str = Field(default="qwen3-max-2026-01-23", description="默认模型名称")
     dashscope_api_key: str = Field(default="")
     openai_api_key: str = Field(default="")
     gemini_api_key: str = Field(default="")
