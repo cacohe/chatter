@@ -110,6 +110,7 @@ class UserLogic:
             return False
 
     @staticmethod
+    @st.cache_data(show_spinner="加载模型中...", ttl=60 * 10)
     def get_available_models() -> List:
         try:
             response = backend_api_client.user.get_available_models()
@@ -126,6 +127,7 @@ class UserLogic:
             return []
 
     @staticmethod
+    @st.cache_data(show_spinner="加载历史对话中...", ttl=60 * 10)
     def get_history_sessions() -> List[Dict] | None:
         try:
             if user_state.is_authenticated:

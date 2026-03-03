@@ -67,9 +67,9 @@ def _render_llm_settings():
             index=default_model_index,
             key="current_model_display",
         )
-        if selected_model:
-            st.session_state.current_model = model_options[selected_model]
-            session_logic.switch_model(selected_model)
+        selected_model_id = model_options[selected_model]
+        if selected_model_id != settings.llm_settings.default_llm:
+            session_logic.switch_model(selected_model_id)
 
     else:
         st.markdown("暂无可用模型")

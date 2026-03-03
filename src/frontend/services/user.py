@@ -9,9 +9,9 @@ from src.shared.schemas import auth as auth_schema
 
 class UserClients:
     def __init__(self, base_url: str):
-        self.auth_url = base_url + '/auth'
-        self.session_url = base_url + '/session'
-        self.llm_url = base_url + '/llm'
+        self.auth_url = base_url + "/auth"
+        self.session_url = base_url + "/session"
+        self.llm_url = base_url + "/llm"
 
     @staticmethod
     def _get_headers():

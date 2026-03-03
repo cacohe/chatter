@@ -54,7 +54,7 @@ class SupabaseSessionRepository(ISessionRepository):
         """切换会话当前使用的 LLM 模型"""
         response = (
             self.client.table(self._table)
-            .update({"active_model_id": model_id})
+            .update({"model_name": model_id})
             .eq("id", str(session_id))
             .execute()
         )

@@ -16,16 +16,27 @@ class SessionLogic:
     @staticmethod
     def switch_model(model_id: str) -> bool:
         try:
-            response = backend_api_client.session.switch_model(session_state.session_id, model_id)
-            if response.status_code == 200:
-                session_state.current_model = response.json()
-                return True
-            else:
-                logger.error(
-                    f"Error when switch model, Status Code: {response.status_code}, "
-                    f"Message: {response.json().get('detail')}"
-                )
+            if not session_state.session_id:
+                logger.warning("Cannot switch model: no active session_id")
                 return False
+            if user_state.is_authenticated:
+                response = backend_api_client.session.switch_model(
+                    session_state.session_id, model_id
+                )
+                if response.status_code == 200:
+                    session_state.current_model_id = model_id
+                    logger.info(f"Switched model to {model_id} successfully.")
+                    return True
+                else:
+                    logger.error(
+                        f"Error when switch model, Status Code: {response.status_code}, "
+                        f"Message: {response.json().get('detail')}"
+                    )
+                    return False
+            else:
+                session_state.current_model_id = model_id
+                logger.info(f"Switched model to {model_id} successfully.")
+                return True
         except Exception as e:
             logger.exception(f"Exception when switch model: {e}")
             return False
@@ -89,11 +100,15 @@ class SessionLogic:
             self._add_message(role=chat_schema.MessageRole.USER, content=content)
 
             response = backend_api_client.session.chat_non_stream(
-                session_id=session_state.session_id, content=content, model_id=session_state.current_model
+                session_id=session_state.session_id,
+                content=content,
+                model_id=session_state.current_model_id,
             )
             if response.status_code == 200:
                 response_content = response.json().get("content")
-                self._add_message(role=chat_schema.MessageRole.ASSISTANT, content=response_content)
+                self._add_message(
+                    role=chat_schema.MessageRole.ASSISTANT, content=response_content
+                )
                 return response_content
 
             logger.error(
@@ -110,7 +125,9 @@ class SessionLogic:
             self._handle_new_session(content)
 
             response = backend_api_client.session.chat_stream(
-                session_id=session_state.session_id, content=content, model_id=session_state.current_model_id
+                session_id=session_state.session_id,
+                content=content,
+                model_id=session_state.current_model_id,
             )
             if response.status_code == 200:
                 for line in response.iter_lines():
