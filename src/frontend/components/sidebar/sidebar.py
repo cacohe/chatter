@@ -69,7 +69,9 @@ def _render_llm_settings():
         )
         selected_model_id = model_options[selected_model]
         if selected_model_id != settings.llm_settings.default_llm:
-            session_logic.switch_model(selected_model_id)
+            if session_logic.switch_model(selected_model_id):
+                st.rerun()
+            logger.error(f"Switch model to {selected_model_id} failed.")
 
     else:
         st.markdown("暂无可用模型")
