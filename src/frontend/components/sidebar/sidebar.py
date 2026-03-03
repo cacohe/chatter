@@ -1,10 +1,10 @@
-import uuid
 import streamlit as st
 
 from src.frontend.components.sidebar.auth import show_authentication_dialog
 from src.frontend.components.sidebar.user import show_user_profile_dialog
 from src.frontend.logic.user import user_logic
 from src.frontend.logic.session import session_logic
+from src.frontend.states.session import session_state
 from src.frontend.states.user import user_state
 from src.shared.config import settings
 from src.shared.logger import logger
@@ -19,7 +19,7 @@ def _render_new_session():
         use_container_width=True,
     ):
         user_logic.create_session()
-        st.rerun()
+        st.session_state["_needs_rerun"] = True
 
 
 def _render_history_session():
@@ -42,13 +42,13 @@ def _render_history_session():
                         use_container_width=True,
                     ):
                         st.session_state.session_id = session_id
-                        st.rerun()
+                        st.session_state["_needs_rerun"] = True
                 with col2:
                     if st.button(
                         "🗑️", key=f"delete_{session_id}", use_container_width=True
                     ):
                         user_logic.delete_session(session_id)
-                        st.rerun()
+                        st.session_state["_needs_rerun"] = True
     else:
         st.markdown("暂无历史对话")
 
@@ -58,20 +58,24 @@ def _render_llm_settings():
     models = user_logic.get_available_models()
     if models:
         model_options = {model["name"]: model["id"] for model in models}
-        default_model_index = list(model_options.values()).index(
-            settings.llm_settings.default_llm
-        )
+        current_model_id = session_state.current_model_id
+        if current_model_id not in model_options.values():
+            current_model_id = settings.llm_settings.default_llm
+
+        default_model_index = list(model_options.values()).index(current_model_id)
         selected_model = st.selectbox(
             "选择模型",
             list(model_options.keys()),
             index=default_model_index,
-            key="current_model_display",
+            key="model_selector",
         )
         selected_model_id = model_options[selected_model]
-        if selected_model_id != settings.llm_settings.default_llm:
+
+        if selected_model_id != current_model_id:
             if session_logic.switch_model(selected_model_id):
-                st.rerun()
-            logger.error(f"Switch model to {selected_model_id} failed.")
+                st.session_state["_needs_rerun"] = True
+            else:
+                logger.error(f"Switch model to {selected_model_id} failed.")
 
     else:
         st.markdown("暂无可用模型")

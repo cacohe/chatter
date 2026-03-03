@@ -38,7 +38,7 @@ def _render_chat_content():
             if full_response:
                 session_state.add_message(role=chat_schema.MessageRole.USER, content=prompt)
                 session_state.add_message(role=chat_schema.MessageRole.ASSISTANT, content=full_response)
-        st.rerun()
+        st.session_state["_needs_rerun"] = True
 
 
 def render_chat_interface():

@@ -12,9 +12,15 @@ st.set_page_config(page_title="Caco", layout="wide")
 
 def main():
     try:
+        st.session_state["_needs_rerun"] = False
+
         render_header()
         render_sidebar()
         render_chat_interface()
+
+        if st.session_state["_needs_rerun"]:
+            st.rerun()
+
     except Exception as e:
         logger.exception(f"Exception: {e}")
         show_error_info()

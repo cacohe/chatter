@@ -127,7 +127,6 @@ class UserLogic:
             return []
 
     @staticmethod
-    @st.cache_data(show_spinner="加载历史对话中...", ttl=60 * 10)
     def get_history_sessions() -> List[Dict] | None:
         try:
             if user_state.is_authenticated:
