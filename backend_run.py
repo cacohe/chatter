@@ -4,22 +4,24 @@ import sys
 from pathlib import Path
 
 from src.shared.logger import logger
+from src.shared.utils import load_env
 
 
 def main():
+    load_env()
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir
 
-    # 2. 获取前端主文件路径
-    frontend_main = project_root / "src" / "backend" / "main.py"
+    # 2. 获取后端主文件路径
+    backend_main = project_root / "src" / "backend" / "main.py"
 
-    # 3. 验证前端主文件是否存在
-    if not frontend_main.exists():
-        logger.error(f"找不到前端入口文件: {frontend_main}")
+    # 3. 验证后端主文件是否存在
+    if not backend_main.exists():
+        logger.error(f"找不到后端入口文件: {backend_main}")
         logger.info(f"项目根目录探测为: {project_root}")
         sys.exit(1)
 
-    cmd = ['python', str(frontend_main.resolve())]
+    cmd = ['python', str(backend_main.resolve())]
 
     # 透传剩余参数
     if len(sys.argv) > 1:
@@ -45,7 +47,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("用户请求停止服务 (KeyboardInterrupt)")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Streamlit 进程异常退出: {e}")
+        logger.error(f"后端进程异常退出: {e}")
         sys.exit(1)
     except Exception as e:
         logger.error(f"启动过程中发生未知错误: {e}")
