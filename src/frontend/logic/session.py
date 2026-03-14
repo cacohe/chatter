@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from typing import Generator
+from typing import Generator, Tuple
 
 import streamlit as st
 
@@ -15,11 +15,15 @@ from src.shared.config import settings
 
 class SessionLogic:
     @staticmethod
-    def switch_model(model_id: str) -> bool:
+    def switch_model(model_id: str) -> Tuple[bool, str | None]:
+        """切换模型
+        Returns:
+            Tuple of (success, error_message)
+        """
         try:
             if not session_state.session_id:
                 logger.warning("Cannot switch model: no active session_id")
-                return False
+                return (False, "没有活动的会话")
             if user_state.is_authenticated:
                 response = backend_api_client.session.switch_model(
                     session_state.session_id, model_id
@@ -27,20 +31,21 @@ class SessionLogic:
                 if response.status_code == 200:
                     session_state.current_model_id = model_id
                     logger.info(f"Switched model to {model_id} successfully.")
-                    return True
+                    return (True, None)
                 else:
+                    error_msg = response.json().get("detail", "切换模型失败")
                     logger.error(
                         f"Error when switch model, Status Code: {response.status_code}, "
-                        f"Message: {response.json().get('detail')}"
+                        f"Message: {error_msg}"
                     )
-                    return False
+                    return (False, error_msg)
             else:
                 session_state.current_model_id = model_id
                 logger.info(f"Switched model to {model_id} successfully.")
-                return True
+                return (True, None)
         except Exception as e:
             logger.exception(f"Exception when switch model: {e}")
-            return False
+            return (False, "切换模型失败，请稍后重试")
 
     @staticmethod
     def _add_message(role, content):
@@ -119,7 +124,11 @@ class SessionLogic:
             )
         return history
 
-    def chat_non_stream(self, content) -> str:
+    def chat_non_stream(self, content) -> Tuple[str | None, str | None]:
+        """发送消息并获取非流式响应
+        Returns:
+            Tuple of (response_content, error_message)
+        """
         try:
             self._handle_new_session(content)
 
@@ -137,18 +146,25 @@ class SessionLogic:
                 self._add_message(
                     role=chat_schema.MessageRole.ASSISTANT, content=response_content
                 )
-                return response_content
-
-            logger.error(
-                f"Error when get response from LLM, Status Code: {response.status_code}, "
-                f"Message: {response.json().get('detail')}"
-            )
-            return "大模型调用失败，请稍后再试。"
+                return (response_content, None)
+            else:
+                error_msg = response.json().get("detail", "大模型调用失败")
+                logger.error(
+                    f"Error when get response from LLM, Status Code: {response.status_code}, "
+                    f"Message: {error_msg}"
+                )
+                return (None, error_msg)
         except Exception as e:
             logger.exception(f"Exception when chat: {e}")
-            return "大模型调用失败，请稍后再试。"
+            return (None, "大模型调用失败，请稍后重试")
 
-    def chat_stream(self, content) -> Generator[str, None, None]:
+    def chat_stream(
+        self, content
+    ) -> Generator[Tuple[str | None, str | None], None, None]:
+        """发送消息并获取流式响应
+        Yields:
+            Tuple of (chunk, error_message)
+        """
         try:
             self._handle_new_session(content)
 
@@ -165,24 +181,20 @@ class SessionLogic:
                         decoded_line = line.decode("utf-8")
                         if decoded_line.startswith("data: "):
                             chunk = decoded_line[6:]
-                            yield chunk
+                            yield (chunk, None)
             else:
+                error_msg = response.json().get("detail", "大模型调用失败")
                 logger.error(
                     f"Error when chat stream, Status Code: {response.status_code}, "
-                    f"Message: {response.json().get('detail')}"
+                    f"Message: {error_msg}"
                 )
-                yield "大模型调用失败，请稍后再试。"
+                yield (None, error_msg)
         except Exception as e:
             logger.exception(f"Exception when stream chat: {e}")
-            yield "大模型调用失败，请稍后再试。"
+            yield (None, "大模型调用失败，请稍后重试")
 
 
-@st.cache_resource
 def get_session_logic():
-    """
-    使用 st.cache_resource 确保在同一个会话(Session)或跨会话中，
-    SessionService 只被实例化一次。
-    """
     return SessionLogic()
 
 

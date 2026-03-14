@@ -25,19 +25,23 @@ def _render_chat_content():
             full_response = ""
 
             try:
-                for chunk in session_logic.chat_stream(content=prompt):
-                    if chunk and not chunk.startswith("Error:"):
+                for chunk, error_msg in session_logic.chat_stream(content=prompt):
+                    if error_msg:
+                        st.error(error_msg)
+                        break
+                    if chunk:
                         full_response += chunk
                         response_placeholder.markdown(full_response)
-                    elif chunk.startswith("Error:"):
-                        st.error(chunk.replace("Error: ", ""))
-                        break
             except Exception as e:
                 st.error(f"请求失败: {str(e)}")
 
             if full_response:
-                session_state.add_message(role=chat_schema.MessageRole.USER, content=prompt)
-                session_state.add_message(role=chat_schema.MessageRole.ASSISTANT, content=full_response)
+                session_state.add_message(
+                    role=chat_schema.MessageRole.USER, content=prompt
+                )
+                session_state.add_message(
+                    role=chat_schema.MessageRole.ASSISTANT, content=full_response
+                )
         st.session_state["_needs_rerun"] = True
 
 

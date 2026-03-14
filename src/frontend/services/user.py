@@ -28,10 +28,7 @@ class UserClients:
         return requests.post(url, json=user_data.model_dump())
 
     def login(self, login_data: auth_schema.LoginRequest) -> Response:
-        """
-        用户登录
-        成功后将 Token 写入 session_state
-        """
+        """用户登录"""
         url = f"{self.auth_url}/login"
         return requests.post(url, json=login_data.model_dump())
 

@@ -1,6 +1,5 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 import uuid
-import streamlit as st
 
 from src.frontend.services.api_client import backend_api_client
 from src.frontend.states.session import session_state
@@ -13,28 +12,46 @@ class UserLogic:
     @staticmethod
     def register(
         user_data: auth_schema.UserCreate,
-    ) -> auth_schema.UserRegisterResponse | None:
-        """用户注册"""
+    ) -> Tuple[auth_schema.UserRegisterResponse | None, str | None]:
+        """用户注册
+        Returns:
+            Tuple of (result, error_message)
+        """
         try:
             response = backend_api_client.user.register(user_data)
 
-            if response.status_code == 200:
-                return auth_schema.UserRegisterResponse(**response.json())
+            if response.status_code in (200, 201):
+                return (auth_schema.UserRegisterResponse(**response.json()), None)
             else:
                 logger.error(
                     f"Error when register, Status Code: {response.status_code}, "
                     f"Message: {response.json().get('detail')}"
                 )
-                return None
+                error_data = response.json()
+                error_msg = error_data.get("detail", "注册失败，请稍后重试")
+                if isinstance(error_data, dict) and "detail" in error_data:
+                    if isinstance(error_data["detail"], dict):
+                        field_errors = {}
+                        field_labels = {
+                            "email": "邮箱",
+                            "username": "用户名",
+                            "password": "密码",
+                        }
+                        for field, msg in error_data["detail"].items():
+                            label = field_labels.get(field, field)
+                            field_errors[label] = msg
+                        return (None, field_errors)
+                return (None, error_msg)
         except Exception as e:
             logger.exception(f"Exception when register: {e}")
-            return None
+            return (None, "注册失败，请稍后重试")
 
     @staticmethod
-    def login(login_data: auth_schema.LoginRequest) -> bool:
-        """
-        用户登录
+    def login(login_data: auth_schema.LoginRequest) -> Tuple[bool, str | None]:
+        """用户登录
         成功后将 Token 写入 session_state
+        Returns:
+            Tuple of (success, error_message)
         """
         try:
             response = backend_api_client.user.login(login_data)
@@ -48,18 +65,18 @@ class UserLogic:
                 user_state.authenticate(access_token, refresh_token, user_info)
 
                 logger.info("login success")
-                return True
+                return (True, None)
             else:
                 logger.error(
                     f"Error when login, Status Code: {response.status_code}, "
                     f"Message: {response.json().get('detail')}"
                 )
-                error_msg = response.json().get("detail", "登录验证失败")
-                st.error(error_msg)
-                return False
+                error_data = response.json()
+                error_msg = error_data.get("detail", "登录失败，请检查邮箱和密码")
+                return (False, error_msg)
         except Exception as e:
             logger.exception(f"Exception when login: {e}")
-            return False
+            return (False, "登录失败，请稍后重试")
 
     @staticmethod
     def get_me() -> Optional[auth_schema.UserInfo]:
@@ -102,7 +119,7 @@ class UserLogic:
     def logout() -> bool:
         """退出登录"""
         try:
-            backend_api_client.auth.logout()
+            backend_api_client.user.logout()
             user_state.unauthenticate()
             return True
         except Exception as e:
@@ -110,7 +127,6 @@ class UserLogic:
             return False
 
     @staticmethod
-    @st.cache_data(show_spinner="加载模型中...", ttl=60 * 10)
     def get_available_models() -> List:
         try:
             response = backend_api_client.user.get_available_models()
@@ -198,12 +214,7 @@ class UserLogic:
             return False
 
 
-@st.cache_resource
 def get_user_logic():
-    """
-    使用 st.cache_resource 确保在同一个会话(Session)或跨会话中，
-    UserLogic 只被实例化一次。
-    """
     return UserLogic()
 
 

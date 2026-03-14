@@ -19,10 +19,11 @@ class AuthService:
             )
             return auth_schemas.UserRegisterResponse(**user_data)
 
+        except AuthError:
+            raise
         except Exception as e:
             logger.exception(f"Failed to register user: {request.email}, Error: {e}")
-            # 将异常包装为领域异常
-            raise AuthError(message=f"注册失败： {str(e)}")
+            raise AuthError(message="注册失败，请稍后重试")
 
     def login(self, request: auth_schemas.LoginRequest) -> auth_schemas.LoginResponse:
         try:
@@ -34,21 +35,22 @@ class AuthService:
 
             if not session or not auth_user:
                 logger.error(f"Failed to login user, Error: {session}")
-                raise AuthError(f"no session or no user")
+                raise AuthError(f"登录失败，邮箱或密码错误")
 
             return auth_schemas.LoginResponse(
                 access_token=auth_res.session.access_token,
                 refresh_token=auth_res.session.refresh_token,
                 user_info=auth_schemas.UserInfo(
                     id=auth_res.user.id,
-                    # TODO 修改获取username的逻辑
-                    username="fake_username",
+                    username=getattr(auth_res.user, "username", "fake_username"),
                     email=auth_res.user.email,
                 ),
             )
+        except AuthError:
+            raise
         except Exception as e:
             logger.exception(f"Failed to login user: {request.email}, Error: {e}")
-            raise AuthError(message="邮箱或密码错误")
+            raise AuthError(message="登录失败，请稍后重试")
 
     def get_current_user(self, token: str) -> auth_schemas.UserInfo:
         try:
