@@ -6,8 +6,7 @@ from src.frontend.components.sidebar.sidebar import render_sidebar
 from src.frontend.components.utils import show_error_info
 from src.shared.logger import logger
 
-
-st.set_page_config(page_title="Caco", layout="wide")
+st.set_page_config(page_title="知识库问答", layout="wide")
 
 
 def main():

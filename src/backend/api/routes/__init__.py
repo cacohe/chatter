@@ -1,6 +1,5 @@
-"""
-路由模块导出
-"""
-from . import chat, llm, session
+"""路由模块"""
 
-__all__ = ["chat", "llm", "session"]
+from . import chat, knowledge
+
+__all__ = ["chat", "knowledge"]

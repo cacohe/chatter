@@ -12,6 +12,8 @@ build/
 .coverage
 htmlcov/
 *.cover
+.ruff_cache/
+.streamlit/
 
 # 虚拟环境
 venv/
@@ -47,10 +49,6 @@ logs/
 Thumbs.db
 *.bak
 *.tmp
-
-# 部署相关
-deploy/
-build_python/
 
 # 其他
 *.pyc

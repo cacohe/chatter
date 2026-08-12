@@ -1,28 +1,30 @@
 import logging
-import os
 import socket
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from src.shared.config import settings
 
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(
+    getattr(logging, settings.log_settings.log_level.upper(), logging.INFO)
+)
 
 host_name = socket.gethostname()
-formatter = logging.Formatter('%(asctime)s\t%(levelname)s\t' + host_name +
-                              '\t%(message)s\t[%(filename)s]\t[%(lineno)d]')
+formatter = logging.Formatter(
+    "%(asctime)s\t%(levelname)s\t"
+    + host_name
+    + "\t%(message)s\t[%(filename)s]\t[%(lineno)d]"
+)
 
-base_path = Path(__file__).resolve().parent.parent.parent # 根据你的目录结构调整
-logs_path = base_path / "logs"
+log_dir = Path(settings.log_settings.log_path)
+if not log_dir.is_absolute():
+    log_dir = Path(__file__).resolve().parent.parent.parent / log_dir
+log_dir.mkdir(parents=True, exist_ok=True)
 
-if not logs_path.exists():
-    logs_path.mkdir(parents=True, exist_ok=True)
-
-file_handler = logging.FileHandler(os.path.join(logs_path, 'app.log'))
-file_handler.setFormatter(formatter)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
+if not logger.handlers:
+    file_handler = logging.FileHandler(log_dir / "app.log")
+    file_handler.setFormatter(formatter)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
