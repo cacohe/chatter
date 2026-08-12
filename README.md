@@ -28,6 +28,7 @@ chatter/
 │   │   └── infra/rag/         # loader / store / retriever
 │   ├── frontend/              # Streamlit UI
 │   └── shared/                # 配置与 schemas
+├── run.py                     # 同时启动前后端
 ├── backend_run.py
 └── frontend_run.py
 ```
@@ -58,12 +59,11 @@ BACKEND_API_URL=http://localhost:8000/api/v1.0
 ### 4. 启动
 
 ```bash
-# 后端
-python backend_run.py
-# 或
-python -m src.backend.main
+# 同时启动前后端
+python run.py
 
-# 前端（另一终端）
+# 或分别启动
+python backend_run.py
 python frontend_run.py
 ```
 
