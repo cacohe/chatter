@@ -5,9 +5,7 @@ from pathlib import Path
 from src.shared.config import settings
 
 logger = logging.getLogger(__name__)
-logger.setLevel(
-    getattr(logging, settings.log_settings.log_level.upper(), logging.INFO)
-)
+logger.setLevel(getattr(logging, settings.log_settings.log_level.upper(), logging.INFO))
 
 host_name = socket.gethostname()
 formatter = logging.Formatter(

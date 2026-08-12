@@ -138,7 +138,9 @@ def reload_docs(
     return load_docs(path, chunk_size=chunk_size, overlap=overlap)
 
 
-def save_uploaded_file(filename: str, content: bytes, docs_path: str | None = None) -> Path:
+def save_uploaded_file(
+    filename: str, content: bytes, docs_path: str | None = None
+) -> Path:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise ValueError(f"不支持的文件类型: {suffix or '(无扩展名)'}")

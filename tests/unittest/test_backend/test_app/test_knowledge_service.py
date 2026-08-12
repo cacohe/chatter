@@ -46,9 +46,7 @@ class TestKnowledgeService:
         load_docs(str(tmp_path), chunk_size=200, overlap=20)
 
         service = KnowledgeService()
-        status = service.reload(
-            ReloadKnowledgeRequest(chunk_size=80, chunk_overlap=10)
-        )
+        status = service.reload(ReloadKnowledgeRequest(chunk_size=80, chunk_overlap=10))
 
         assert status.document_count == 1
         assert status.chunk_size == 80

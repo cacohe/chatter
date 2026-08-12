@@ -34,9 +34,7 @@ class ChatService:
         return history
 
     def _build_messages(self, request: chat_schema.ChatRequest) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": _SYSTEM_PROMPT}
-        ]
+        messages: list[dict[str, str]] = [{"role": "system", "content": _SYSTEM_PROMPT}]
 
         chunks = retrieve(request.content)
         context = format_context(chunks)

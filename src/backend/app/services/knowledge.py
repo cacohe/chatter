@@ -15,10 +15,14 @@ class KnowledgeService:
         store = get_knowledge_store()
         doc_chunk_counts: dict[str, int] = {}
         for chunk in store.chunks:
-            doc_chunk_counts[chunk.doc_name] = doc_chunk_counts.get(chunk.doc_name, 0) + 1
+            doc_chunk_counts[chunk.doc_name] = (
+                doc_chunk_counts.get(chunk.doc_name, 0) + 1
+            )
 
         documents = [
-            knowledge_schema.DocumentInfo(name=name, chunk_count=doc_chunk_counts.get(name, 0))
+            knowledge_schema.DocumentInfo(
+                name=name, chunk_count=doc_chunk_counts.get(name, 0)
+            )
             for name in store.document_names
         ]
         return knowledge_schema.KnowledgeStatus(
@@ -53,7 +57,11 @@ class KnowledgeService:
 
         validate_chunk_params(size, overlap)
 
-        docs_path = Path(store.docs_path or settings.rag_settings.docs_path).expanduser().resolve()
+        docs_path = (
+            Path(store.docs_path or settings.rag_settings.docs_path)
+            .expanduser()
+            .resolve()
+        )
         store.docs_path = str(docs_path)
         store.chunk_size = size
         store.chunk_overlap = overlap

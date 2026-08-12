@@ -33,7 +33,9 @@ def _render_chat_content():
                         break
                     if chunk:
                         if chunk.startswith("Error:"):
-                            st.error(chunk.removeprefix("Error:").strip() or "发生未知错误")
+                            st.error(
+                                chunk.removeprefix("Error:").strip() or "发生未知错误"
+                            )
                             break
                         full_response += chunk
                         response_placeholder.markdown(full_response)

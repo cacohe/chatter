@@ -48,7 +48,9 @@ class TestKnowledgeRoutes:
         )
         response = client.post(
             "/api/v1.0/knowledge/upload",
-            files=[("files", ("new.md", "new upload content".encode(), "text/markdown"))],
+            files=[
+                ("files", ("new.md", "new upload content".encode(), "text/markdown"))
+            ],
             data={"chunk_size": "80", "chunk_overlap": "10"},
         )
         assert response.status_code == 200
