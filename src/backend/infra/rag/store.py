@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -11,7 +12,7 @@ class DocumentChunk:
 
 @dataclass
 class KnowledgeStore:
-    """进程内知识库"""
+    """进程内知识库（LlamaIndex nodes + 预览分块）"""
 
     docs_path: str = ""
     chunk_size: int = 500
@@ -19,17 +20,22 @@ class KnowledgeStore:
     document_count: int = 0
     document_names: list[str] = field(default_factory=list)
     chunks: list[DocumentChunk] = field(default_factory=list)
+    nodes: list[Any] = field(default_factory=list)
 
     def clear(self) -> None:
         self.document_count = 0
         self.document_names = []
         self.chunks = []
+        self.nodes = []
 
     def remove_document(self, doc_name: str) -> None:
         if doc_name in self.document_names:
             self.document_names.remove(doc_name)
             self.document_count = max(0, self.document_count - 1)
         self.chunks = [chunk for chunk in self.chunks if chunk.doc_name != doc_name]
+        self.nodes = [
+            node for node in self.nodes if node.metadata.get("doc_name") != doc_name
+        ]
 
 
 _store: KnowledgeStore | None = None

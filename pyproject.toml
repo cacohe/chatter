@@ -14,6 +14,8 @@ dependencies = [
     "uvicorn~=0.24.0",
     "streamlit~=1.52.1",
     "requests~=2.32.5",
+    "llama-index-core>=0.14.23",
+    "llama-index-retrievers-bm25>=0.7.1",
 ]
 
 [dependency-groups]

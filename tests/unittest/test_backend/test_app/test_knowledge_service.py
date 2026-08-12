@@ -29,10 +29,10 @@ def reset_store():
 
 class TestChunkHelpers:
     def test_chunk_text_with_overlap(self):
-        text = "a" * 100
+        text = "年假政策说明。" * 30
         chunks = chunk_text(text, chunk_size=40, overlap=10)
         assert len(chunks) >= 2
-        assert all(len(chunk) <= 40 for chunk in chunks)
+        assert all(chunk.strip() for chunk in chunks)
 
     def test_validate_chunk_params_rejects_large_overlap(self):
         with pytest.raises(ValueError, match="chunk_overlap"):

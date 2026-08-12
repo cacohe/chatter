@@ -1,5 +1,7 @@
-import uuid
 from pathlib import Path
+
+from llama_index.core import Document, Settings, SimpleDirectoryReader
+from llama_index.core.node_parser import SentenceSplitter
 
 from src.backend.infra.rag.store import (
     DocumentChunk,
@@ -12,23 +14,22 @@ from src.shared.logger import logger
 
 SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown"}
 
+Settings.llm = None
+Settings.embed_model = None
+
+
+def _splitter(chunk_size: int, overlap: int) -> SentenceSplitter:
+    return SentenceSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
+
 
 def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
     text = text.strip()
     if not text:
         return []
-    if len(text) <= chunk_size:
-        return [text]
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        if end >= len(text):
-            break
-        start = max(end - overlap, start + 1)
-    return chunks
+    nodes = _splitter(chunk_size, overlap).get_nodes_from_documents(
+        [Document(text=text)]
+    )
+    return [node.get_content() for node in nodes]
 
 
 def validate_chunk_params(chunk_size: int, overlap: int) -> None:
@@ -58,21 +59,25 @@ def ingest_text(
     overlap: int,
 ) -> int:
     store.remove_document(doc_name)
-    parts = chunk_text(content, chunk_size, overlap)
-    doc_id = str(uuid.uuid4())
-    for idx, part in enumerate(parts):
+    nodes = _splitter(chunk_size, overlap).get_nodes_from_documents(
+        [Document(text=content.strip())]
+    )
+    for idx, node in enumerate(nodes):
+        node.metadata["doc_name"] = doc_name
+        node.metadata["chunk_index"] = idx
+        store.nodes.append(node)
         store.chunks.append(
             DocumentChunk(
-                doc_id=doc_id,
+                doc_id=node.node_id,
                 doc_name=doc_name,
-                content=part,
+                content=node.get_content(),
                 chunk_index=idx,
             )
         )
     store.document_names.append(doc_name)
     store.document_count += 1
-    logger.info(f"Ingested RAG doc: {doc_name} ({len(parts)} chunks)")
-    return len(parts)
+    logger.info(f"Ingested RAG doc: {doc_name} ({len(nodes)} chunks)")
+    return len(nodes)
 
 
 def load_docs(
@@ -81,7 +86,7 @@ def load_docs(
     chunk_size: int | None = None,
     overlap: int | None = None,
 ) -> KnowledgeStore:
-    """从目录加载全部文档到内存知识库。"""
+    """用 LlamaIndex 从目录加载文档并分块。"""
     size, ov = _resolve_chunk_params(chunk_size, overlap)
     path = Path(docs_path or settings.rag_settings.docs_path).expanduser().resolve()
     store = KnowledgeStore(
@@ -100,24 +105,34 @@ def load_docs(
         logger.warning(f"RAG docs path is not a directory: {path}")
         return store
 
-    files = sorted(
-        p
-        for p in path.rglob("*")
-        if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
-    )
+    try:
+        documents = SimpleDirectoryReader(
+            input_dir=str(path),
+            required_exts=sorted(SUPPORTED_SUFFIXES),
+            recursive=True,
+            filename_as_id=True,
+        ).load_data()
+    except ValueError:
+        logger.warning(f"No supported documents found in: {path}")
+        return store
 
-    for file_path in files:
+    for document in documents:
+        file_path = Path(
+            document.metadata.get("file_path")
+            or document.metadata.get("file_name")
+            or ""
+        )
         try:
-            content = file_path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
-            logger.warning(f"Decoded with errors ignored: {file_path}")
-        except Exception as e:
-            logger.exception(f"Failed to read {file_path}: {e}")
-            continue
-
-        doc_name = str(file_path.relative_to(path))
-        ingest_text(store, doc_name, content, chunk_size=size, overlap=ov)
+            doc_name = str(file_path.relative_to(path))
+        except ValueError:
+            doc_name = file_path.name or "document"
+        ingest_text(
+            store,
+            doc_name,
+            document.get_content(),
+            chunk_size=size,
+            overlap=ov,
+        )
 
     logger.info(
         f"RAG knowledge loaded: {store.document_count} docs, "

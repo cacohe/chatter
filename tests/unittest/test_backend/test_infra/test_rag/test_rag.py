@@ -15,6 +15,7 @@ def test_load_docs_from_sample_dir():
     store = load_docs(str(docs_path))
     assert store.document_count >= 1
     assert len(store.chunks) >= 1
+    assert len(store.nodes) >= 1
 
 
 def test_retrieve_leave_policy():

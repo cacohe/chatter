@@ -28,28 +28,28 @@ def _render_knowledge_panel():
             f"{status['document_count']} 个文档 · {status['chunk_count']} 个分块"
         )
         chunk_size = st.number_input(
-            "分块大小（字符）",
+            "分块大小",
             min_value=50,
             max_value=10000,
             value=int(status.get("chunk_size", 500)),
             step=50,
-            help="每个分块最多包含多少字符",
+            help="每个分块的目标长度（按句子切分）",
         )
         chunk_overlap = st.number_input(
-            "重叠长度（字符）",
+            "重叠长度",
             min_value=0,
             max_value=5000,
             value=int(status.get("chunk_overlap", 50)),
             step=10,
-            help="相邻两个分块之间重复多少字符，需小于分块大小",
+            help="相邻两个分块之间重复的内容长度，需小于分块大小",
         )
     else:
         st.warning("无法连接后端知识库服务")
         chunk_size = st.number_input(
-            "分块大小（字符）", min_value=50, max_value=10000, value=500
+            "分块大小", min_value=50, max_value=10000, value=500
         )
         chunk_overlap = st.number_input(
-            "重叠长度（字符）", min_value=0, max_value=5000, value=50
+            "重叠长度", min_value=0, max_value=5000, value=50
         )
 
     uploaded_files = st.file_uploader(

@@ -7,7 +7,7 @@
 - **后端**: FastAPI
 - **前端**: Streamlit
 - **LLM**: LiteLLM 调用通义千问（`DEFAULT_LLM` 需为已登记模型）
-- **检索**: 进程内分块 + 关键字重叠检索（无向量库）
+- **检索**: LlamaIndex 句子分块 + BM25 检索（无向量库）
 
 ## 工作方式
 
