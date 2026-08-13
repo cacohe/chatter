@@ -1,3 +1,5 @@
+"""流式问答用例：BM25 检索 → 拼进 system prompt → LiteLLM 吐 token。"""
+
 from collections.abc import AsyncGenerator
 
 from domain.exceptions import BusinessException
@@ -13,7 +15,9 @@ _SYSTEM_PROMPT = (
 )
 
 
-class ChatService:
+class StreamChat:
+    """单次问答：检索知识库后流式生成回答。"""
+
     @property
     def max_history_messages(self) -> int:
         return settings.llm_settings.max_history_messages
@@ -36,13 +40,14 @@ class ChatService:
     def _build_messages(self, request: chat_schema.ChatRequest) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = [{"role": "system", "content": _SYSTEM_PROMPT}]
 
-        chunks = retrieve(request.content)
-        context = format_context(chunks)
+        # 用当前问题检索，命中的分块作为第二段 system，约束模型勿编造
+        related_chunks = retrieve(request.content)
+        context = format_context(related_chunks)
         if context:
             messages.append(
                 {"role": "system", "content": f"以下是参考文档内容:\n{context}"}
             )
-            logger.info(f"RAG retrieved {len(chunks)} chunks for query")
+            logger.info(f"RAG retrieved {len(related_chunks)} chunks for query")
         else:
             logger.info("RAG retrieved no chunks for query")
 
@@ -50,7 +55,7 @@ class ChatService:
         messages.append({"role": "user", "content": request.content})
         return messages
 
-    async def handle_chat_stream(
+    async def execute(
         self, request: chat_schema.ChatRequest
     ) -> AsyncGenerator[str, None]:
         try:
@@ -59,6 +64,7 @@ class ChatService:
                 yield chunk
         except BusinessException as e:
             logger.exception("Chat stream processing failed")
+            # SSE 已 200，只能在帧内带 Error: 前缀让前端展示
             yield f"Error: {e.message}"
         except Exception as e:
             logger.exception("Chat stream processing failed")

@@ -1,3 +1,5 @@
+"""通用 UI 提示。"""
+
 import streamlit as st
 
 

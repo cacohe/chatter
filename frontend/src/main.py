@@ -1,3 +1,5 @@
+"""Streamlit 入口：页头、侧边栏知识库、主区对话。"""
+
 import streamlit as st
 
 from components.chat import render_chat_interface
@@ -11,6 +13,7 @@ st.set_page_config(page_title="知识库问答", layout="wide")
 
 def main():
     try:
+        # 子组件通过该标记请求整页刷新（例如入库成功后的 toast）
         st.session_state["_needs_rerun"] = False
 
         render_header()

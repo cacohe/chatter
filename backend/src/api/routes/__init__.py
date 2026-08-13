@@ -1,4 +1,4 @@
-"""路由模块"""
+"""HTTP 路由包：chat、knowledge。"""
 
 from . import chat, knowledge
 

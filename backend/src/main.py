@@ -1,3 +1,5 @@
+"""FastAPI 入口：组装应用、CORS 与 uvicorn 启动。"""
+
 import os
 
 import uvicorn
@@ -17,6 +19,7 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/health")
     async def health():
+        """云平台探活，不依赖知识库是否已加载。"""
         return {"status": "ok"}
 
 
@@ -35,6 +38,7 @@ def _create_app() -> FastAPI:
 
 app = _create_app()
 
+# 本地 Streamlit 与后端不同源，放开 CORS 以便浏览器直连
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,7 +49,7 @@ app.add_middleware(
 
 def main():
     host: str = settings.backend_settings.backend_listen_addr
-    # 优先使用云平台注入的 PORT
+    # 云平台（Render 等）注入 PORT，优先于本地 BACKEND_LISTEN_PORT
     port: int = int(os.getenv("PORT") or settings.backend_settings.backend_listen_port)
     reload: bool = settings.backend_settings.reload
 

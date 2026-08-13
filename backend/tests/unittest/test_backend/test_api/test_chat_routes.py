@@ -6,27 +6,27 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.deps import get_chat_service
+from api.deps import get_stream_chat
 from api.routes.chat import chat_router
 
 
 class TestChatRoutes:
     @pytest.fixture
-    def mock_chat_service(self):
-        service = Mock()
+    def mock_stream_chat(self):
+        usecase = Mock()
 
         async def _stream(_request):
             yield "hello"
             yield " world"
 
-        service.handle_chat_stream = _stream
-        return service
+        usecase.execute = _stream
+        return usecase
 
     @pytest.fixture
-    def client(self, mock_chat_service):
+    def client(self, mock_stream_chat):
         app = FastAPI()
         app.include_router(chat_router)
-        app.dependency_overrides[get_chat_service] = lambda: mock_chat_service
+        app.dependency_overrides[get_stream_chat] = lambda: mock_stream_chat
         return TestClient(app)
 
     def test_chat_stream_returns_sse(self, client):

@@ -1,18 +1,17 @@
-import streamlit as st
+"""聚合聊天与知识库客户端，页面只依赖这一个入口。"""
 
-from services.chat import chat_client
-from services.knowledge import knowledge_client
+from services.chat import ChatClient, chat_client
+from services.knowledge import KnowledgeClient, knowledge_client
 
 
 class BackendAPIClient:
-    def __init__(self):
-        self.chat = chat_client
-        self.knowledge = knowledge_client
+    @property
+    def chat(self) -> ChatClient:
+        return chat_client
+
+    @property
+    def knowledge(self) -> KnowledgeClient:
+        return knowledge_client
 
 
-@st.cache_resource
-def get_api_client():
-    return BackendAPIClient()
-
-
-backend_api_client = get_api_client()
+backend_api_client = BackendAPIClient()

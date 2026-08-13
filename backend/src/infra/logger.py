@@ -1,3 +1,5 @@
+"""进程日志：同时写控制台与 backend/logs/app.log。"""
+
 import logging
 import socket
 from pathlib import Path
@@ -16,6 +18,7 @@ formatter = logging.Formatter(
 
 log_dir = Path(settings.log_settings.log_path)
 if not log_dir.is_absolute():
+    # 相对路径锚定到 backend/ 根目录，避免随启动 cwd 漂移
     log_dir = Path(__file__).resolve().parents[2] / log_dir
 log_dir.mkdir(parents=True, exist_ok=True)
 

@@ -1,3 +1,5 @@
+"""前端日志只打控制台，不写文件。"""
+
 import logging
 import socket
 

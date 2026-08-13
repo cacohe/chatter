@@ -23,8 +23,8 @@ def setup_docs(tmp_path: Path):
 
 
 class TestKnowledgeRoutes:
-    def test_get_status(self, client: TestClient):
-        response = client.get("/api/v1.0/knowledge/status")
+    def test_get_summary(self, client: TestClient):
+        response = client.get("/api/v1.0/knowledge/summary")
         assert response.status_code == 200
         data = response.json()
         assert data["document_count"] == 1
@@ -63,3 +63,20 @@ class TestKnowledgeRoutes:
         chunks = response.json()
         assert len(chunks) >= 1
         assert "content" in chunks[0]
+
+    def test_delete_document(self, client: TestClient, tmp_path: Path):
+        response = client.delete(
+            "/api/v1.0/knowledge/documents",
+            params={"doc_name": "policy.md"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["document_count"] == 0
+        assert not (tmp_path / "policy.md").exists()
+
+    def test_delete_missing_document(self, client: TestClient):
+        response = client.delete(
+            "/api/v1.0/knowledge/documents",
+            params={"doc_name": "missing.md"},
+        )
+        assert response.status_code == 404

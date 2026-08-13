@@ -1,3 +1,5 @@
+"""前端配置：后端 API 地址与本轮对话历史条数上限。"""
+
 import os
 
 from pydantic import ConfigDict, Field

@@ -1,3 +1,5 @@
+"""从环境变量组装配置；模块导入时完成初始化，供各层直接引用 settings。"""
+
 import os
 
 from pydantic import ConfigDict, Field
@@ -17,8 +19,8 @@ class _LLMSettings(BaseSettings):
 class _RAGSettings(BaseSettings):
     docs_path: str = Field(default="./data/docs", description="知识库文档目录")
     top_k: int = Field(default=4, description="检索返回的分块数量")
-    chunk_size: int = Field(default=500, description="文档分块大小（字符）")
-    chunk_overlap: int = Field(default=50, description="分块重叠字符数")
+    chunk_size: int = Field(default=500, description="文档分块大小")
+    chunk_overlap: int = Field(default=50, description="分块重叠长度")
 
 
 class _BackendSettings(BaseSettings):
@@ -60,7 +62,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 def _init_settings():
     load_env()
-    # 云平台常注入 PORT；未设置时回退到 BACKEND_LISTEN_PORT / 默认 8000
+    # 云平台常注入 PORT；本地则用 BACKEND_LISTEN_PORT / 默认 8000
     listen_port = int(os.getenv("PORT") or os.getenv("BACKEND_LISTEN_PORT") or "8000")
     return Settings(
         backend_settings=_BackendSettings(

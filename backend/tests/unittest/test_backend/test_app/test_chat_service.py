@@ -1,17 +1,17 @@
-"""Tests for ChatService."""
+"""Tests for StreamChat use case."""
 
 from unittest.mock import patch
 
 import pytest
 
-from app.services.chat import ChatService
+from app.services.chat.stream import StreamChat
 from domain.schemas import chat as chat_schema
 
 
-class TestChatService:
+class TestStreamChat:
     @pytest.fixture
-    def chat_service(self):
-        return ChatService()
+    def usecase(self):
+        return StreamChat()
 
     @pytest.fixture
     def chat_request(self):
@@ -28,24 +28,22 @@ class TestChatService:
         )
 
     @pytest.mark.asyncio
-    async def test_handle_chat_stream(self, chat_service, chat_request):
+    async def test_stream_chat(self, usecase, chat_request):
         async def _stream(messages):
             for part in ("你好", "，世界"):
                 yield part
 
         with (
-            patch("app.services.chat.stream_chat", _stream),
-            patch("app.services.chat.retrieve", return_value=[]),
-            patch("app.services.chat.format_context", return_value=""),
+            patch("app.services.chat.stream.stream_chat", _stream),
+            patch("app.services.chat.stream.retrieve", return_value=[]),
+            patch("app.services.chat.stream.format_context", return_value=""),
         ):
-            chunks = [c async for c in chat_service.handle_chat_stream(chat_request)]
+            chunks = [c async for c in usecase.execute(chat_request)]
 
         assert "".join(chunks) == "你好，世界"
 
     @pytest.mark.asyncio
-    async def test_handle_chat_stream_with_rag_context(
-        self, chat_service, chat_request
-    ):
+    async def test_stream_chat_with_rag_context(self, usecase, chat_request):
         captured_messages = []
 
         async def _stream(messages):
@@ -53,17 +51,17 @@ class TestChatService:
             yield "10 天"
 
         with (
-            patch("app.services.chat.stream_chat", _stream),
+            patch("app.services.chat.stream.stream_chat", _stream),
             patch(
-                "app.services.chat.retrieve",
+                "app.services.chat.stream.retrieve",
                 return_value=[object()],
             ),
             patch(
-                "app.services.chat.format_context",
+                "app.services.chat.stream.format_context",
                 return_value="[1] 来源: leave.md\n年假 10 天",
             ),
         ):
-            chunks = [c async for c in chat_service.handle_chat_stream(chat_request)]
+            chunks = [c async for c in usecase.execute(chat_request)]
 
         assert chunks == ["10 天"]
         assert any(

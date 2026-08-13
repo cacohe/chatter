@@ -1,7 +1,11 @@
+"""本轮对话消息存在 st.session_state，刷新页面即丢失。"""
+
 import streamlit as st
 
 
 class SessionState:
+    """对 Streamlit 会话字典的薄封装，避免各组件直接读写 messages。"""
+
     @property
     def messages(self) -> list[dict[str, str]]:
         return st.session_state.get("messages") or []

@@ -1,13 +1,13 @@
 # RAG 知识问答
 
-基于 FastAPI + Streamlit 的**一次性本地 RAG 知识问答**：无需登录、无持久化、无长期记忆。知识库从固定目录加载，对话记忆仅保存在前端本轮会话中。
+基于 FastAPI + Streamlit 的**一次性本地 RAG 知识问答**：无需登录、无长期记忆。知识可来自 PDF / Markdown 文件、数据库同步或网页；对话记忆仅保存在前端本轮会话中。
 
 ## 技术栈
 
 - **后端**: FastAPI（`backend/`）
 - **前端**: Streamlit（`frontend/`）
 - **LLM**: LiteLLM 调用 LLM
-- **检索**: 进程内分块 + 关键字重叠检索（无向量库）
+- **检索**: LlamaIndex 加载 / 句子分块 + BM25 检索（无向量库）
 
 ## 项目结构
 

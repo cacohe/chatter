@@ -1,3 +1,5 @@
+"""对话请求模型：历史消息由前端持有，后端无会话存储。"""
+
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field

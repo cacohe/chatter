@@ -1,3 +1,5 @@
+"""LiteLLM 流式调用；模型短名映射到供应商前缀（如 dashscope/...）。"""
+
 from collections.abc import AsyncGenerator
 
 import litellm
@@ -14,6 +16,7 @@ _LITELLM_MODELS: dict[str, str] = {
 
 
 def resolve_model(model_id: str) -> str:
+    """只允许白名单模型，避免把任意字符串传给 LiteLLM。"""
     litellm_model = _LITELLM_MODELS.get(model_id)
     if not litellm_model:
         raise BusinessException(f"默认模型未注册: {model_id}")
@@ -28,6 +31,7 @@ async def stream_chat(
     top_p: float = 1.0,
     max_tokens: int | None = 2048,
 ) -> AsyncGenerator[str, None]:
+    """按 token 产出模型增量文本；调用失败转为 BusinessException。"""
     model = resolve_model(model_id or settings.llm_settings.default_llm)
     try:
         response = await litellm.acompletion(

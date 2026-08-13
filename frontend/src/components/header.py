@@ -1,7 +1,10 @@
+"""页头标题。"""
+
 from logger import logger
 
 
 def render_header():
+    """渲染页头。"""
     try:
         import streamlit as st
 

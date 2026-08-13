@@ -1,3 +1,5 @@
+"""主区对话：流式渲染助手回复，完整后再写入 session_state。"""
+
 import streamlit as st
 
 from logic.session import session_logic
@@ -32,6 +34,7 @@ def _render_chat_content():
                         st.error(error_msg)
                         break
                     if chunk:
+                        # 后端流内业务失败以 "Error:" 前缀写出，不当作模型正文
                         if chunk.startswith("Error:"):
                             st.error(
                                 chunk.removeprefix("Error:").strip() or "发生未知错误"
@@ -45,8 +48,10 @@ def _render_chat_content():
             if full_response:
                 session_state.add_message(role="user", content=prompt)
                 session_state.add_message(role="assistant", content=full_response)
+        # 流结束后 rerun，让历史区与输入框状态一致
         st.session_state["_needs_rerun"] = True
 
 
 def render_chat_interface():
+    """渲染主区问答界面。"""
     _render_chat_content()

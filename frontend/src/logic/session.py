@@ -1,3 +1,5 @@
+"""对话逻辑：把本轮历史发给后端，解析 SSE 流。"""
+
 from collections.abc import Generator
 
 from config import settings
@@ -12,6 +14,7 @@ class SessionLogic:
         session_state.clear_messages()
 
     def _get_history_for_api(self) -> list:
+        """截取最近若干条，与后端 max_history_messages 对齐。"""
         messages = session_state.messages
         if not messages:
             return []
@@ -28,6 +31,7 @@ class SessionLogic:
     def chat_stream(
         self, content: str
     ) -> Generator[tuple[str | None, str | None], None, None]:
+        """逐 token 产出 (chunk, error)；成功时 error 为 None。"""
         try:
             history = self._get_history_for_api()
             response = backend_api_client.chat.chat_stream(

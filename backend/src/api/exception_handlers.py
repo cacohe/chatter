@@ -8,6 +8,8 @@ from infra.logger import logger
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    """把领域异常转成统一 JSON，避免未捕获异常把栈信息暴露给前端。"""
+
     @app.exception_handler(BusinessException)
     async def business_exception_handler(request: Request, exc: BusinessException):
         logger.warning(f"业务异常 [path={request.url.path}]: {exc.message}")
