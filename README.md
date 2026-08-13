@@ -20,17 +20,14 @@
 ```
 chatter/
 ├── backend/                   # FastAPI 独立部署
-│   ├── src/                   # api / app / domain / infra
+│   ├── src/                   # api / app / domain / infra；入口 main.py
 │   ├── data/docs/
 │   ├── tests/
-│   ├── pyproject.toml
-│   └── run.py
-├── frontend/                  # Streamlit 独立部署
-│   ├── pyproject.toml
-│   ├── requirements.txt
-│   ├── src/main.py            # Cloud / Streamlit 入口
-│   └── run.py
-└── run.py                     # 本地同时启动前后端
+│   └── pyproject.toml
+└── frontend/                  # Streamlit 独立部署
+    ├── pyproject.toml
+    ├── requirements.txt
+    └── src/main.py            # Cloud / Streamlit 入口
 ```
 
 ## 快速开始（本地）
@@ -54,12 +51,11 @@ cp frontend/.env.example frontend/.env.local
 ### 3. 启动
 
 ```bash
-# 仓库根目录：同时启动
-python run.py
+# 后端
+cd backend && PYTHONPATH=src uv run python -m main
 
-# 或分别启动
-python backend/run.py
-python frontend/run.py
+# 前端
+cd frontend && PYTHONPATH=src uv run streamlit run src/main.py
 ```
 
 ## 分开部署
@@ -69,7 +65,7 @@ python frontend/run.py
 ```bash
 cd backend
 uv sync
-python run.py
+PYTHONPATH=src uv run python -m main
 ```
 
 环境变量见 `backend/.env.example`。生产保持 `RELOAD=false`；云平台 `PORT` 优先生效。探活：`GET /health`。
