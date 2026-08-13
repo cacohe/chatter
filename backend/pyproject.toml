@@ -1,0 +1,34 @@
+[project]
+name = "chatter-backend"
+version = "0.1.0"
+description = "RAG knowledge Q&A FastAPI backend"
+readme = "../README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic~=2.12.4",
+    "pydantic-settings~=2.13.1",
+    "python-dotenv~=1.0.0",
+    "fastapi~=0.121.2",
+    "litellm>=1.60.0",
+    "python-multipart>=0.0.9",
+    "uvicorn~=0.24.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "pytest~=9.0.2",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"

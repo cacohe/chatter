@@ -4,74 +4,86 @@
 
 ## 技术栈
 
-- **后端**: FastAPI
-- **前端**: Streamlit
+- **后端**: FastAPI（`backend/`）
+- **前端**: Streamlit（`frontend/`）
 - **LLM**: LiteLLM 调用通义千问（`DEFAULT_LLM` 需为已登记模型）
 - **检索**: 进程内分块 + 关键字重叠检索（无向量库）
 
 ## 工作方式
 
-1. 后端启动时扫描 `data/docs`（`.txt` / `.md`），分块载入内存
+1. 后端启动时扫描 `backend/data/docs`（`.txt` / `.md`），分块载入内存
 2. 用户提问 → 检索相关分块 → 注入 system 上下文 → 调用默认模型流式回答
 3. 前端用 `session_state` 保存本轮消息，请求时附带 `history`；「开启新对话」清空消息
 
-## 项目结构（精简）
+## 项目结构
 
 ```
 chatter/
-├── data/docs/                 # 知识库文档（启动加载）
-├── src/
-│   ├── backend/
-│   │   ├── api/routes/        # chat / knowledge
-│   │   ├── app/services/      # ChatService
-│   │   ├── infra/llm/         # LiteLLM 调用
-│   │   └── infra/rag/         # loader / store / retriever
-│   ├── frontend/              # Streamlit UI
-│   └── shared/                # 配置与 schemas
-├── run.py                     # 同时启动前后端
-├── backend_run.py
-└── frontend_run.py
+├── backend/                   # FastAPI 独立部署
+│   ├── src/                   # api / app / domain / infra
+│   ├── data/docs/
+│   ├── tests/
+│   ├── pyproject.toml
+│   └── run.py
+├── frontend/                  # Streamlit 独立部署
+│   ├── pyproject.toml
+│   ├── requirements.txt
+│   ├── src/main.py            # Cloud / Streamlit 入口
+│   └── run.py
+└── run.py                     # 本地同时启动前后端
 ```
 
-## 快速开始
+## 快速开始（本地）
 
 ### 1. 安装依赖
 
 ```bash
-uv sync
+cd backend && uv sync --all-groups
+cd ../frontend && uv sync
 ```
 
 ### 2. 配置环境变量
 
-复制 `.env.example` 为 `.env.local`，至少配置：
-
-```env
-DASHSCOPE_API_KEY=your_key
-DEFAULT_LLM=qwen3.7-max
-RAG_DOCS_PATH=./data/docs
-BACKEND_API_URL=http://localhost:8000/api/v1.0
+```bash
+cp backend/.env.example backend/.env.local
+cp frontend/.env.example frontend/.env.local
 ```
 
-### 3. 准备知识库
+后端至少配置 `DASHSCOPE_API_KEY`、`DEFAULT_LLM`；前端配置 `BACKEND_API_URL`。
 
-将文档放入 `data/docs/`（已有示例：请假政策等）。也可在界面上传文档，或调整分块参数后重新分块。
-
-### 4. 启动
+### 3. 启动
 
 ```bash
-# 同时启动前后端
+# 仓库根目录：同时启动
 python run.py
 
 # 或分别启动
-python backend_run.py
-python frontend_run.py
+python backend/run.py
+python frontend/run.py
 ```
 
-打开 Streamlit 页面即可提问。
+## 分开部署
+
+### 后端
+
+```bash
+cd backend
+uv sync
+python run.py
+```
+
+环境变量见 `backend/.env.example`。生产保持 `RELOAD=false`；云平台 `PORT` 优先生效。探活：`GET /health`。
+
+### 前端（Streamlit Cloud）
+
+- 入口：`frontend/src/main.py`
+- 依赖：`frontend/requirements.txt`（由 `uv export --no-dev -o requirements.txt` 生成）
+- Secrets：
+
+```toml
+BACKEND_API_URL = "https://你的后端域名/api/v1.0"
+```
 
 ## CI
 
-Push / PR 到 `master` 或 `main` 时，GitHub Actions 会执行：
-
-- **Ruff**：import 排序、语法/未使用变量检查、格式校验
-- **Pytest**：`tests/unittest/test_backend`
+Push / PR 到 `master` 或 `main` 时，对 `backend/` 执行 Ruff + Pytest。
