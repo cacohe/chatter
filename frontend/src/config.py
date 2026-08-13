@@ -1,62 +1,31 @@
 import os
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
 
-from dotenv import load_dotenv
+from pydantic import ConfigDict, Field
+from pydantic_settings import BaseSettings
 
-
-def _apply_streamlit_secrets() -> None:
-    try:
-        import streamlit as st
-
-        secrets = st.secrets
-    except Exception:
-        return
-
-    def _flatten(obj: Any, prefix: str = "") -> None:
-        if hasattr(obj, "items"):
-            items = obj.items()
-        elif isinstance(obj, dict):
-            items = obj.items()
-        else:
-            return
-
-        for key, value in items:
-            env_key = f"{prefix}{key}" if not prefix else f"{prefix}_{key}"
-            env_key = str(env_key).upper()
-            if hasattr(value, "items") or isinstance(value, dict):
-                _flatten(value, env_key)
-            elif value is not None and env_key not in os.environ:
-                os.environ[env_key] = str(value)
-
-    try:
-        _flatten(secrets)
-    except Exception:
-        return
+from utils import load_env
 
 
-def _load_env() -> None:
-    root = Path(__file__).resolve().parents[1]  # frontend/
-    repo_root = root.parent
-    for base in (root, repo_root):
-        for name in (".env.local", ".env"):
-            path = base / name
-            if path.exists():
-                load_dotenv(dotenv_path=path, override=False)
-                return
+class Settings(BaseSettings):
+    """应用配置类，使用 Pydantic 进行类型验证和自动转换"""
+
+    backend_api_url: str = Field(
+        default="http://localhost:8000/api/v1.0",
+        description="后端 API 地址",
+    )
+    max_history_messages: int = Field(
+        default=10, description="最大历史消息数，用于控制上下文长度"
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore",
+    )
 
 
-@dataclass(frozen=True)
-class FrontendSettings:
-    backend_api_url: str = "http://localhost:8000/api/v1.0"
-    max_history_messages: int = 10
-
-
-def load_settings() -> FrontendSettings:
-    _apply_streamlit_secrets()
-    _load_env()
-    return FrontendSettings(
+def _init_settings():
+    load_env()
+    return Settings(
         backend_api_url=(
             os.getenv("BACKEND_API_URL") or "http://localhost:8000/api/v1.0"
         ).rstrip("/"),
@@ -64,4 +33,4 @@ def load_settings() -> FrontendSettings:
     )
 
 
-settings = load_settings()
+settings = _init_settings()

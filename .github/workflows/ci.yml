@@ -7,7 +7,7 @@ on:
     branches: [master, main]
 
 jobs:
-  quality:
+  backend:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -33,3 +33,29 @@ jobs:
         env:
           DASHSCOPE_API_KEY: test-key-for-ci
           DEFAULT_LLM: qwen3.7-max
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Ruff lint
+        run: uv run ruff check src tests --config pyproject.toml
+
+      - name: Ruff format check
+        run: uv run ruff format --check src tests --config pyproject.toml
+
+      - name: Pytest
+        run: uv run pytest tests/unittest/test_frontend -q
+        env:
+          BACKEND_API_URL: http://localhost:8000/api/v1.0

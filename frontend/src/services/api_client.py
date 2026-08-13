@@ -1,4 +1,5 @@
 import streamlit as st
+
 from services.chat import chat_client
 from services.knowledge import knowledge_client
 
