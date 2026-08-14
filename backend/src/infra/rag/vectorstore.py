@@ -44,7 +44,6 @@ def get_vector_store() -> QdrantVectorStore:
         _vector_store = QdrantVectorStore(
             client=get_qdrant_client(),
             collection_name=settings.rag_settings.qdrant_collection,
-            index_doc_id=not _is_memory_url(settings.rag_settings.qdrant_url),
         )
     return _vector_store
 
@@ -77,18 +76,8 @@ def collection_ready() -> bool:
         return False
 
 
-def delete_document(doc_name: str) -> None:
-    """从 Qdrant 删除指定文档的全部分块。文档不存在或尚未建库时直接返回。"""
-    if not doc_name or not collection_ready():
-        return
-    try:
-        get_index().delete_ref_doc(doc_name, delete_from_docstore=False)
-    except Exception:
-        logger.exception("Failed to delete document from Qdrant: %s", doc_name)
-
-
-def iter_point_payloads() -> Iterator[dict[str, Any]]:
-    """滚动当前 collection 的全部 payload（不含向量），供目录与预览使用。"""
+def iter_points() -> Iterator[tuple[Any, dict[str, Any]]]:
+    """滚动当前 collection 的点 id 与 payload（不含向量）。"""
     if not collection_ready():
         return
     client = get_qdrant_client()
@@ -103,6 +92,22 @@ def iter_point_payloads() -> Iterator[dict[str, Any]]:
             with_vectors=False,
         )
         for point in points:
-            yield dict(point.payload or {})
+            yield point.id, dict(point.payload or {})
         if offset is None:
             break
+
+
+def iter_point_payloads() -> Iterator[dict[str, Any]]:
+    """滚动当前 collection 的全部 payload（不含向量），供目录与预览使用。"""
+    for _, payload in iter_points():
+        yield payload
+
+
+def delete_points(point_ids: list[Any]) -> None:
+    """按点 id 删除，不走 payload 过滤（云端过滤需要 keyword 索引）。"""
+    if not point_ids or not collection_ready():
+        return
+    get_qdrant_client().delete(
+        collection_name=settings.rag_settings.qdrant_collection,
+        points_selector=point_ids,
+    )

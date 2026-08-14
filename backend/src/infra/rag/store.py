@@ -7,7 +7,12 @@ from llama_index.core.schema import NodeRelationship, RelatedNodeInfo, TextNode
 
 from domain.models.knowledge import DocumentRecord
 from infra.logger import logger
-from infra.rag.vectorstore import delete_document, iter_point_payloads, upsert_nodes
+from infra.rag.vectorstore import (
+    delete_points,
+    iter_point_payloads,
+    iter_points,
+    upsert_nodes,
+)
 
 
 class QdrantKnowledgeStore:
@@ -23,7 +28,12 @@ class QdrantKnowledgeStore:
             logger.info(f"Ingested RAG doc: {doc_id} ({count} chunks)")
 
     def delete_document(self, doc_id: str) -> None:
-        delete_document(doc_id)
+        point_ids = [
+            point_id
+            for point_id, raw in iter_points()
+            if _doc_name(_flatten_payload(raw)) == doc_id
+        ]
+        delete_points(point_ids)
 
     def list_documents(self) -> list[DocumentRecord]:
         counts: dict[str, int] = {}
