@@ -1,4 +1,4 @@
-"""Streamlit 入口：页头、侧边栏知识库、主区对话。"""
+"""Streamlit 入口：页头、侧边栏知识库、主区聊天。"""
 
 import streamlit as st
 

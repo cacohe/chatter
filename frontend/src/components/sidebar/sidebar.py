@@ -7,9 +7,9 @@ from logic.session import session_logic
 from services.api_client import backend_api_client
 
 
-def _render_new_conversation():
-    if st.button("开启新对话", use_container_width=True, help="清空本轮对话记忆"):
-        session_logic.clear_conversation()
+def _render_new_chat():
+    if st.button("开启新聊天", use_container_width=True, help="开始一轮新的问答"):
+        session_logic.start_new_chat()
         st.session_state["_needs_rerun"] = True
 
 
@@ -53,7 +53,7 @@ def _chunk_controls(summary: dict | None) -> tuple[int, int]:
             max_value=10000,
             value=size_default,
             step=50,
-            help="每个分块的目标长度（按句子切分）",
+            help="仅作用于之后上传、同步或导入的内容，不会改写已有分块",
         )
     with col_overlap:
         chunk_overlap = st.number_input(
@@ -62,7 +62,7 @@ def _chunk_controls(summary: dict | None) -> tuple[int, int]:
             max_value=5000,
             value=overlap_default,
             step=10,
-            help="相邻两个分块之间重复的内容长度，需小于分块大小",
+            help="仅作用于之后入库的内容；需小于分块大小，不会改写已有分块",
         )
     return int(chunk_size), int(chunk_overlap)
 
@@ -194,21 +194,6 @@ def _render_knowledge_panel():
     summary = _load_knowledge_summary()
     chunk_size, chunk_overlap = _chunk_controls(summary)
 
-    if st.button(
-        "按新参数重新分块", use_container_width=True, help="对已有文档重新切分"
-    ):
-        try:
-            result = backend_api_client.knowledge.reload(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-            _mark_success(
-                f"已重新分块：{result['document_count']} 个文档，"
-                f"{result['chunk_count']} 个分块"
-            )
-        except Exception as e:
-            st.error(f"重新分块失败: {e}")
-
     file_tab, db_tab, web_tab = st.tabs(["文件", "数据库", "网页"])
     with file_tab:
         _render_file_source(chunk_size, chunk_overlap)
@@ -224,7 +209,7 @@ def render_sidebar():
     """渲染左侧知识库面板。"""
     try:
         with st.sidebar:
-            _render_new_conversation()
+            _render_new_chat()
             st.divider()
             _render_knowledge_panel()
     except Exception as e:

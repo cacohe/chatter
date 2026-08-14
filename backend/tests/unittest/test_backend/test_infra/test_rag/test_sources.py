@@ -6,19 +6,9 @@ from unittest.mock import patch
 import pytest
 from llama_index.core import Document
 
-from infra.rag.loader import delete_stored_document, ingest_llama_documents, load_docs
-from infra.rag.sources import (
-    load_database_documents,
-    load_web_documents,
-)
-from infra.rag.store import KnowledgeStore, set_knowledge_store
-
-
-@pytest.fixture(autouse=True)
-def reset_store():
-    set_knowledge_store(KnowledgeStore())
-    yield
-    set_knowledge_store(KnowledgeStore())
+from app.services.knowledge.operations import ingest_documents, list_chunks
+from infra.rag.identity import canonicalize_url, database_source_id, web_source_id
+from infra.rag.sources import LlamaDatabaseLoader, LlamaWebLoader
 
 
 def test_sync_sqlite_database(tmp_path: Path):
@@ -34,14 +24,14 @@ def test_sync_sqlite_database(tmp_path: Path):
     conn.commit()
     conn.close()
 
-    documents = load_database_documents(
-        f"sqlite:///{db_path}",
-        "SELECT title, body FROM articles",
-        prefix="db/articles",
-    )
+    uri = f"sqlite:///{db_path}"
+    query = "SELECT title, body FROM articles"
+    documents = LlamaDatabaseLoader().load(uri, query)
     assert len(documents) == 1
-    assert "年假" in documents[0].get_content() or "10" in documents[0].get_content()
-    assert documents[0].metadata["doc_name"].startswith("db/articles/")
+    assert "年假" in documents[0].text or "10" in documents[0].text
+    source_id = database_source_id(uri, query)
+    assert documents[0].doc_id.startswith(source_id)
+    assert documents[0].metadata.get("source_id") == source_id
 
 
 def test_load_web_documents():
@@ -50,14 +40,11 @@ def test_load_web_documents():
         "infra.rag.sources.HeaderWebPageReader.load_data",
         return_value=[page],
     ):
-        documents = load_web_documents(
-            "https://example.com/leave",
-            prefix="web/example",
-        )
+        documents = LlamaWebLoader().load("https://example.com/leave")
 
     assert len(documents) == 1
-    assert "年假" in documents[0].get_content()
-    assert documents[0].metadata["doc_name"].startswith("web/example/")
+    assert "年假" in documents[0].text
+    assert documents[0].doc_id == web_source_id("https://example.com/leave")
 
 
 def test_load_web_documents_rejects_loading_shell():
@@ -67,10 +54,7 @@ def test_load_web_documents_rejects_loading_shell():
         return_value=[shell],
     ):
         with pytest.raises(ValueError, match="未能从网页解析出正文"):
-            load_web_documents(
-                "https://movie.douban.com/subject/1/",
-                prefix="web/movie",
-            )
+            LlamaWebLoader().load("https://movie.douban.com/subject/1/")
 
 
 def test_load_web_documents_rejects_empty():
@@ -79,7 +63,7 @@ def test_load_web_documents_rejects_empty():
         return_value=[Document(text="   ")],
     ):
         with pytest.raises(ValueError, match="未能从网页解析出正文"):
-            load_web_documents("https://example.com", prefix="web/empty")
+            LlamaWebLoader().load("https://example.com")
 
 
 def test_load_web_documents_reader_failure():
@@ -88,35 +72,37 @@ def test_load_web_documents_reader_failure():
         side_effect=RuntimeError("blocked"),
     ):
         with pytest.raises(ValueError, match="未能从网页解析出正文"):
-            load_web_documents(
-                "https://example.com/leave",
-                prefix="web/example",
-            )
+            LlamaWebLoader().load("https://example.com/leave")
 
 
-def test_load_docs_reads_markdown(tmp_path: Path):
-    (tmp_path / "leave.md").write_text("公司年假 10 天。", encoding="utf-8")
-    store = load_docs(str(tmp_path), chunk_size=100, overlap=10)
-    assert store.document_count >= 1
+def test_web_source_id_is_url_not_host():
+    leave = web_source_id("https://example.com/leave")
+    policy = web_source_id("https://example.com/policy")
+    same = web_source_id("https://EXAMPLE.com/leave/#section")
+    assert leave != policy
+    assert leave == same
+    assert canonicalize_url("https://example.com/a/?b=1&a=2") == canonicalize_url(
+        "https://example.com/a?a=2&b=1"
+    )
 
 
-def test_ingest_llama_documents():
-    store = KnowledgeStore()
-    ingest_llama_documents(
-        store,
-        [Document(text="hello world", metadata={"doc_name": "a.md"})],
+def test_database_source_id_is_uri_and_query():
+    uri = "sqlite:///./a.db"
+    first = database_source_id(uri, "SELECT body FROM policy")
+    second = database_source_id(uri, "SELECT title FROM policy")
+    same = database_source_id(uri, "SELECT   body FROM policy")
+    other_db = database_source_id("sqlite:///./b.db", "SELECT body FROM policy")
+    assert first != second
+    assert first == same
+    assert first != other_db
+
+
+def test_ingest_documents():
+    ingest_documents(
+        [Document(text="hello world", doc_id="a.md")],
         chunk_size=100,
         overlap=10,
     )
-    assert store.document_count == 1
-    assert store.nodes[0].get_content() == "hello world"
-
-
-def test_delete_stored_document_rejects_path_escape(tmp_path: Path):
-    docs = tmp_path / "docs"
-    docs.mkdir()
-    secret = tmp_path / "secret.md"
-    secret.write_text("secret", encoding="utf-8")
-    with pytest.raises(ValueError, match="无效的文档路径"):
-        delete_stored_document(str(docs), "../secret.md")
-    assert secret.exists()
+    previews = list_chunks(doc_id="a.md", limit=5)
+    assert len(previews) == 1
+    assert previews[0].get_content() == "hello world"

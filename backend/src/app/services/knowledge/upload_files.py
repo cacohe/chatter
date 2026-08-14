@@ -1,13 +1,11 @@
-from llama_index.core import Document
-
-from app.services.knowledge.common import build_summary, prepare_store
+from app.services.knowledge.operations import ingest_documents
 from domain.exceptions import BusinessException
-from domain.schemas import knowledge as knowledge_schema
-from infra.rag.loader import documents_from_upload, ingest_llama_documents
+from domain.models.knowledge import KnowledgeSnapshot
+from infra.rag.sources import UploadFileLoader
 
 
 class UploadFiles:
-    """上传 PDF/Markdown/TXT：经 LlamaIndex 解析后写入进程内知识库。"""
+    """上传 PDF/Markdown/TXT，解析后分块写入知识库。"""
 
     def execute(
         self,
@@ -15,20 +13,19 @@ class UploadFiles:
         *,
         chunk_size: int | None = None,
         overlap: int | None = None,
-    ) -> knowledge_schema.KnowledgeSummary:
+    ) -> KnowledgeSnapshot:
         if not files:
             raise BusinessException("请至少上传一个文件")
-
-        store, size, ov = prepare_store(chunk_size=chunk_size, overlap=overlap)
-        documents: list[Document] = []
+        loader = UploadFileLoader()
+        documents = []
         for filename, content in files:
             try:
-                documents.extend(documents_from_upload(filename, content))
+                documents.append(loader.load(filename, content))
             except ValueError as exc:
                 raise BusinessException(str(exc)) from exc
-        if not documents:
-            raise BusinessException("未能从文件中读取到文本内容")
-        ingest_llama_documents(
-            store, documents, chunk_size=size, overlap=ov, default_name="upload"
+        return ingest_documents(
+            documents,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            default_id="upload",
         )
-        return build_summary()

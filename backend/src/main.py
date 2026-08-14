@@ -38,7 +38,6 @@ def _create_app() -> FastAPI:
 
 app = _create_app()
 
-# 本地 Streamlit 与后端不同源，放开 CORS 以便浏览器直连
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,16 +48,16 @@ app.add_middleware(
 
 def main():
     host: str = settings.backend_settings.backend_listen_addr
-    # 云平台（Render 等）注入 PORT，优先于本地 BACKEND_LISTEN_PORT
     port: int = int(os.getenv("PORT") or settings.backend_settings.backend_listen_port)
     reload: bool = settings.backend_settings.reload
+    log_level = settings.log_settings.log_level.lower()
 
     uvicorn.run(
         app="main:app",
         host=host,
         port=port,
         reload=reload,
-        log_level="info",
+        log_level=log_level,
         access_log=True,
     )
 

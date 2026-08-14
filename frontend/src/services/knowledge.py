@@ -43,15 +43,6 @@ class KnowledgeClient:
         response.raise_for_status()
         return response.json()
 
-    def reload(self, chunk_size: int, chunk_overlap: int) -> dict:
-        response = requests.post(
-            f"{self.base_url}/knowledge/reload",
-            json={"chunk_size": chunk_size, "chunk_overlap": chunk_overlap},
-            timeout=60,
-        )
-        response.raise_for_status()
-        return response.json()
-
     def upload_files(
         self,
         files: list[tuple[str, bytes]],

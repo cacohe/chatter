@@ -1,22 +1,30 @@
-"""知识来源适配：DatabaseReader 与带请求头的 SimpleWebPageReader。"""
+"""知识来源适配：上传文件、网页、数据库。"""
 
+import hashlib
+import json
 import re
+from io import BytesIO
+from pathlib import Path
+from typing import Any
 
+import pypdf
 from llama_index.core import Document
 from llama_index.core.bridge.pydantic import PrivateAttr
 from llama_index.readers.database import DatabaseReader
 from llama_index.readers.web import SimpleWebPageReader
 
 from infra.logger import logger
+from infra.rag.identity import database_source_id, slug, web_source_id
 
-_UNSAFE_NAME = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff._-]+")
+SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown", ".pdf"}
+
+_WEB_EMPTY_ERROR = (
+    "未能从网页解析出正文。该链接可能需要登录、浏览器渲染，或被站点拦截。"
+)
 _WEB_SHELL_HINTS = re.compile(
     r"载入中|加载中|正在加载|请开启\s*javascript|enable javascript|"
     r"just a moment|checking your browser|人机验证|请稍候",
     re.I,
-)
-_WEB_EMPTY_ERROR = (
-    "未能从网页解析出正文。该链接可能需要登录、浏览器渲染，或被站点拦截。"
 )
 _WEB_HEADERS = {
     "User-Agent": (
@@ -30,9 +38,7 @@ _WEB_HEADERS = {
 
 
 class HeaderWebPageReader(SimpleWebPageReader):
-    """
-    SimpleWebPageReader 默认不带 UA，部分站点会返回空页或反爬壳；此处补浏览器头。
-    """
+    """SimpleWebPageReader 默认不带 UA；此处补浏览器头。"""
 
     _headers: dict[str, str] = PrivateAttr(default_factory=dict)
 
@@ -50,7 +56,6 @@ class HeaderWebPageReader(SimpleWebPageReader):
             merged = {**headers, **(kwargs.pop("headers", None) or {})}
             response = original_get(url, headers=merged or None, **kwargs)
             encoding = response.encoding
-            # requests 对未声明 charset 的 HTML 常误判为 ISO-8859-1
             if not encoding or encoding.lower() == "iso-8859-1":
                 response.encoding = response.apparent_encoding or "utf-8"
             return response
@@ -62,32 +67,7 @@ class HeaderWebPageReader(SimpleWebPageReader):
             web_base.requests.get = original_get
 
 
-def slug(value: str, fallback: str = "source") -> str:
-    """
-    把主机名/来源名收成可做文档前缀的短标识。
-    """
-    cleaned = _UNSAFE_NAME.sub("-", value).strip("-._")
-    return cleaned[:80] or fallback
-
-
-def load_database_documents(uri: str, query: str, *, prefix: str) -> list[Document]:
-    """
-    用 LlamaIndex DatabaseReader 执行 SQL，每行一篇文档。
-    """
-    reader = DatabaseReader(uri=uri)
-    documents = reader.load_data(query=query)
-    named: list[Document] = []
-    for index, document in enumerate(documents):
-        document.metadata["doc_name"] = f"{prefix}/{index}.md"
-        named.append(document)
-    logger.info(f"Loaded {len(named)} documents from database")
-    return named
-
-
 def _is_placeholder_page(text: str) -> bool:
-    """
-    识别反爬/JS 壳页面（避免 HTTP 200 但几乎没有正文）。
-    """
     compact = re.sub(r"\s+", "", text)
     if not compact:
         return True
@@ -97,28 +77,108 @@ def _is_placeholder_page(text: str) -> bool:
     return len(remainder) < 80
 
 
-def load_web_documents(url: str, *, prefix: str) -> list[Document]:
-    """
-    抓取网页正文；空页或占位页视为失败，避免把「载入中」当知识入库。
-    """
-    try:
-        documents = HeaderWebPageReader(
-            html_to_text=True,
-            fail_on_error=True,
-            headers=_WEB_HEADERS,
-        ).load_data([url])
-    except Exception as exc:
-        logger.warning(f"SimpleWebPageReader failed for {url}: {exc}")
-        documents = []
+def _row_key(row: dict[str, Any], index: int) -> str:
+    lowered = {str(key).lower(): value for key, value in row.items()}
+    for key in ("id", "pk", "uuid", "guid"):
+        value = lowered.get(key)
+        if value is not None and str(value).strip():
+            return slug(str(value), fallback=str(index))
+    payload = json.dumps(row, default=str, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
-    named: list[Document] = []
-    for index, document in enumerate(documents):
-        text = (document.get_content() or "").strip()
-        if not text or _is_placeholder_page(text):
-            continue
-        document.metadata["doc_name"] = f"{prefix}/{index}.md"
-        named.append(document)
-    if not named:
-        raise ValueError(_WEB_EMPTY_ERROR)
-    logger.info(f"Loaded {len(named)} documents from web page {url}")
-    return named
+
+def _to_documents(
+    items: list[tuple[str, str, str]],
+) -> list[Document]:
+    return [
+        Document(text=text, doc_id=doc_id, metadata={"source_id": source_id})
+        for doc_id, text, source_id in items
+    ]
+
+
+class UploadFileLoader:
+    def load(self, filename: str, content: bytes) -> Document:
+        suffix = Path(filename).suffix.lower()
+        if suffix not in SUPPORTED_SUFFIXES:
+            raise ValueError(f"不支持的文件类型: {suffix or '(无扩展名)'}")
+        safe_name = Path(filename).name
+        if not safe_name or safe_name in {".", ".."}:
+            raise ValueError("无效的文件名")
+
+        text = _extract_text(suffix, content).strip()
+        if not text:
+            raise ValueError("未能从文件中读取到文本内容")
+        return Document(text=text, doc_id=safe_name)
+
+
+def _extract_text(suffix: str, content: bytes) -> str:
+    if suffix == ".pdf":
+        try:
+            reader = pypdf.PdfReader(BytesIO(content))
+        except Exception as exc:
+            raise ValueError("无法解析 PDF 文件") from exc
+        if reader.is_encrypted:
+            raise ValueError("不支持加密的 PDF 文件")
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("文本文件必须是 UTF-8 编码") from exc
+
+
+class LlamaWebLoader:
+    def load(self, url: str) -> list[Document]:
+        source_id = web_source_id(url)
+        try:
+            documents = HeaderWebPageReader(
+                html_to_text=True,
+                fail_on_error=True,
+                headers=_WEB_HEADERS,
+            ).load_data([url])
+        except Exception as exc:
+            logger.warning(f"SimpleWebPageReader failed for {url}: {exc}")
+            documents = []
+
+        usable: list[tuple[str, str, str]] = []
+        for document in documents:
+            text = (document.get_content() or "").strip()
+            if not text or _is_placeholder_page(text):
+                continue
+            usable.append(("", text, source_id))
+        if not usable:
+            raise ValueError(_WEB_EMPTY_ERROR)
+        if len(usable) == 1:
+            named = [(source_id, usable[0][1], source_id)]
+        else:
+            named = [
+                (f"{source_id}/{index}", text, source_id)
+                for index, (_, text, _) in enumerate(usable)
+            ]
+        logger.info(f"Loaded {len(named)} documents from web page {url}")
+        return _to_documents(named)
+
+
+class LlamaDatabaseLoader:
+    def load(self, uri: str, query: str) -> list[Document]:
+        source_id = database_source_id(uri, query)
+        used: dict[str, int] = {}
+
+        def document_id(row: dict[str, Any]) -> str:
+            key = _row_key(row, len(used))
+            count = used.get(key, 0)
+            used[key] = count + 1
+            row_id = key if count == 0 else f"{key}-{count}"
+            return f"{source_id}/{row_id}"
+
+        reader = DatabaseReader(uri=uri)
+        documents = reader.load_data(query=query, document_id=document_id)
+        named: list[Document] = []
+        for document in documents:
+            name = str(document.id_ or document.doc_id or "")
+            if not name.startswith(source_id):
+                name = f"{source_id}/{len(named)}"
+            document.doc_id = name
+            document.metadata["source_id"] = source_id
+            named.append(document)
+        logger.info(f"Loaded {len(named)} documents from database")
+        return named

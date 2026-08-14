@@ -29,22 +29,6 @@ class TestKnowledgeClient:
         )
         mock_response.raise_for_status.assert_called_once()
 
-    def test_reload(self, client):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"ok": True}
-
-        with patch(
-            "services.knowledge.requests.post", return_value=mock_response
-        ) as post:
-            result = client.reload(chunk_size=400, chunk_overlap=40)
-
-        assert result == {"ok": True}
-        post.assert_called_once_with(
-            "http://backend.test/api/v1.0/knowledge/reload",
-            json={"chunk_size": 400, "chunk_overlap": 40},
-            timeout=60,
-        )
-
     def test_upload_files_with_chunk_params(self, client):
         mock_response = MagicMock()
         mock_response.json.return_value = {"uploaded": 1}

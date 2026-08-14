@@ -1,11 +1,10 @@
 """Tests for knowledge API routes."""
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
+from llama_index.core import Document
 
-from infra.rag.loader import load_docs
+from app.services.knowledge.operations import ingest_documents
 from main import app
 
 
@@ -15,10 +14,12 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def setup_docs(tmp_path: Path):
-    doc = tmp_path / "policy.md"
-    doc.write_text("公司年假 10 天。", encoding="utf-8")
-    load_docs(str(tmp_path), chunk_size=100, overlap=10)
+def setup_docs():
+    ingest_documents(
+        [Document(text="公司年假 10 天。", doc_id="policy.md")],
+        chunk_size=100,
+        overlap=10,
+    )
     yield
 
 
@@ -31,21 +32,7 @@ class TestKnowledgeRoutes:
         assert data["chunk_count"] >= 1
         assert data["chunk_size"] == 100
 
-    def test_reload(self, client: TestClient):
-        response = client.post(
-            "/api/v1.0/knowledge/reload",
-            json={"chunk_size": 50, "chunk_overlap": 5},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["chunk_size"] == 50
-        assert data["chunk_overlap"] == 5
-
-    def test_upload(self, client: TestClient, tmp_path: Path, monkeypatch):
-        monkeypatch.setattr(
-            "infra.config.settings.rag_settings.docs_path",
-            str(tmp_path),
-        )
+    def test_upload(self, client: TestClient):
         response = client.post(
             "/api/v1.0/knowledge/upload",
             files=[
@@ -64,7 +51,7 @@ class TestKnowledgeRoutes:
         assert len(chunks) >= 1
         assert "content" in chunks[0]
 
-    def test_delete_document(self, client: TestClient, tmp_path: Path):
+    def test_delete_document(self, client: TestClient):
         response = client.delete(
             "/api/v1.0/knowledge/documents",
             params={"doc_name": "policy.md"},
@@ -72,7 +59,6 @@ class TestKnowledgeRoutes:
         assert response.status_code == 200
         data = response.json()
         assert data["document_count"] == 0
-        assert not (tmp_path / "policy.md").exists()
 
     def test_delete_missing_document(self, client: TestClient):
         response = client.delete(

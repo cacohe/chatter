@@ -1,13 +1,13 @@
 # RAG 知识问答
 
-基于 FastAPI + Streamlit 的**一次性本地 RAG 知识问答**：无需登录、无长期记忆。知识可来自 PDF / Markdown 文件、数据库同步或网页；对话记忆仅保存在前端本轮会话中。
+基于 FastAPI + Streamlit 的**一次性本地 RAG 知识问答**：无需登录、无长期记忆。知识可来自 PDF / Markdown 文件、数据库同步或网页；对话的完整展示历史由后端保存、前端经 API 拉取渲染，给模型用的短期上下文是后端另一份按条数截断的记忆，二者分开。
 
 ## 技术栈
 
 - **后端**: FastAPI（`backend/`）
 - **前端**: Streamlit（`frontend/`）
 - **LLM**: LiteLLM 调用 LLM
-- **检索**: LlamaIndex 加载 / 句子分块 + BM25 检索（无向量库）
+- **检索**: LlamaIndex 加载 / 句子分块 + Qdrant Cloud 向量检索
 
 ## 项目结构
 
@@ -15,7 +15,6 @@
 chatter/
 ├── backend/                   # FastAPI 独立部署
 │   ├── src/                   # api / app / domain / infra；入口 main.py
-│   ├── data/docs/
 │   ├── tests/
 │   └── pyproject.toml
 └── frontend/                  # Streamlit 独立部署
@@ -40,7 +39,7 @@ cp backend/.env.example backend/.env.local
 cp frontend/.env.example frontend/.env.local
 ```
 
-后端至少配置 `DASHSCOPE_API_KEY`、`DEFAULT_LLM`；前端配置 `BACKEND_API_URL`。
+后端至少配置 `DASHSCOPE_API_KEY`、`DEFAULT_LLM`，以及 Qdrant Cloud 的 `QDRANT_URL`、`QDRANT_API_KEY`。前端配置 `BACKEND_API_URL`。
 
 ### 3. 启动
 

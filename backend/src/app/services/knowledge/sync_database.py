@@ -1,26 +1,40 @@
-from app.services.knowledge.common import ingest_source
+from app.services.knowledge.operations import ingest_documents
 from domain.exceptions import BusinessException
-from domain.schemas import knowledge as knowledge_schema
-from infra.rag.sources import load_database_documents, slug
+from domain.models.knowledge import KnowledgeSnapshot
+from infra.rag.sources import LlamaDatabaseLoader
 
 
 class SyncDatabase:
-    """用 DatabaseReader 拉 SQL 结果并入库，同样只保留在内存。"""
+    """同步 SQL 查询结果：原文不落盘，分块写入知识库。"""
 
     def execute(
-        self, request: knowledge_schema.SyncDatabaseRequest
-    ) -> knowledge_schema.KnowledgeSummary:
-        name = slug(request.name or "database")
-        prefix = f"db/{name}"
+        self,
+        uri: str,
+        query: str,
+        *,
+        chunk_size: int | None = None,
+        overlap: int | None = None,
+    ) -> KnowledgeSnapshot:
         try:
-            documents = load_database_documents(
-                request.uri, request.query, prefix=prefix
-            )
+            documents = LlamaDatabaseLoader().load(uri, query)
+        except BusinessException:
+            raise
+        except ValueError as exc:
+            raise BusinessException(str(exc)) from exc
         except Exception as exc:
             raise BusinessException(f"数据库同步失败: {exc}") from exc
-        return ingest_source(
+        source_id = next(
+            (
+                str(doc.metadata["source_id"])
+                for doc in documents
+                if doc.metadata.get("source_id")
+            ),
+            None,
+        )
+        return ingest_documents(
             documents,
-            prefix=prefix,
-            chunk_size=request.chunk_size,
-            overlap=request.chunk_overlap,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            replace_source=source_id,
+            default_id=source_id or "document",
         )

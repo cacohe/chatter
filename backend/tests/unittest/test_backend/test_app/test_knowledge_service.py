@@ -1,6 +1,7 @@
-"""Tests for knowledge service and loader helpers."""
+"""Tests for knowledge service and domain ingest rules."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from llama_index.core import Document
@@ -8,28 +9,31 @@ from llama_index.core import Document
 from app.services.knowledge.delete_document import DeleteDocument
 from app.services.knowledge.ingest_web import IngestWeb
 from app.services.knowledge.list_chunks import ListChunks
-from app.services.knowledge.reload import ReloadKnowledge
+from app.services.knowledge.operations import ingest_documents, list_chunks, snapshot
 from app.services.knowledge.sync_database import SyncDatabase
 from app.services.knowledge.upload_files import UploadFiles
 from domain.exceptions import BusinessException
-from domain.schemas.knowledge import ReloadKnowledgeRequest
-from infra.rag.loader import (
-    ingest_llama_documents,
-    load_docs,
-    validate_chunk_params,
-)
-from infra.rag.store import (
-    KnowledgeStore,
-    get_knowledge_store,
-    set_knowledge_store,
-)
+from domain.models.knowledge import validate_chunk_params
+from infra.rag.identity import web_source_id
 
 
-@pytest.fixture(autouse=True)
-def reset_store():
-    set_knowledge_store(KnowledgeStore())
-    yield
-    set_knowledge_store(KnowledgeStore())
+def _ingest(doc_id: str, text: str, *, chunk_size: int = 80, overlap: int = 10):
+    ingest_documents(
+        [Document(text=text, doc_id=doc_id)],
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+
+
+def _chunk_text(doc_name: str) -> str:
+    return "".join(
+        item.get_content() for item in list_chunks(doc_id=doc_name, limit=1000)
+    )
+
+
+def _web_doc(url: str, text: str) -> list[Document]:
+    source_id = web_source_id(url)
+    return [Document(text=text, doc_id=source_id, metadata={"source_id": source_id})]
 
 
 class TestChunkHelpers:
@@ -39,25 +43,22 @@ class TestChunkHelpers:
 
 
 class TestKnowledgeUseCases:
-    def test_reload_with_custom_chunk_params(self, tmp_path: Path):
-        doc = tmp_path / "demo.md"
-        doc.write_text("年假政策说明。" * 30, encoding="utf-8")
-        load_docs(str(tmp_path), chunk_size=200, overlap=20)
+    def test_new_ingest_does_not_rechunk_existing(self):
+        _ingest("demo.md", "年假政策说明。" * 30, chunk_size=200, overlap=20)
+        before = _chunk_text("demo.md")
 
-        status = ReloadKnowledge().execute(
-            ReloadKnowledgeRequest(chunk_size=80, chunk_overlap=10)
+        status = UploadFiles().execute(
+            [("later.md", ("后续上传文档内容。" * 20).encode("utf-8"))],
+            chunk_size=60,
+            overlap=10,
         )
 
-        assert status.document_count == 1
-        assert status.chunk_size == 80
-        assert status.chunk_overlap == 10
-        assert status.chunk_count >= 2
+        assert _chunk_text("demo.md") == before
+        assert status.chunk_params.size == 60
+        assert status.chunk_params.overlap == 10
+        assert any(doc.name == "later.md" for doc in status.documents)
 
-    def test_upload_files(self, tmp_path: Path, monkeypatch):
-        monkeypatch.setattr(
-            "infra.config.settings.rag_settings.docs_path",
-            str(tmp_path),
-        )
+    def test_upload_files(self):
         content = "上传测试文档内容。" * 20
         status = UploadFiles().execute(
             [("upload.md", content.encode("utf-8"))],
@@ -67,40 +68,14 @@ class TestKnowledgeUseCases:
 
         assert status.document_count == 1
         assert status.chunk_count >= 1
-        assert not (tmp_path / "upload.md").exists()
-
-    def test_reload_keeps_memory_upload(self, tmp_path: Path, monkeypatch):
-        monkeypatch.setattr(
-            "infra.config.settings.rag_settings.docs_path",
-            str(tmp_path),
-        )
-        (tmp_path / "disk.md").write_text("磁盘文档内容。" * 10, encoding="utf-8")
-        load_docs(str(tmp_path), chunk_size=80, overlap=10)
-
-        UploadFiles().execute(
-            [("memory.md", ("内存文档内容。" * 10).encode("utf-8"))],
-            chunk_size=80,
-            overlap=10,
-        )
-        status = ReloadKnowledge().execute(
-            ReloadKnowledgeRequest(chunk_size=80, chunk_overlap=10)
-        )
-        names = [doc.name for doc in status.documents]
-        assert "disk.md" in names
-        assert "memory.md" in names
-        assert not (tmp_path / "memory.md").exists()
 
     def test_upload_empty_files_raises(self):
         with pytest.raises(BusinessException):
             UploadFiles().execute([])
 
-    def test_sync_database(self, tmp_path: Path, monkeypatch):
+    def test_sync_database(self, tmp_path: Path):
         import sqlite3
 
-        monkeypatch.setattr(
-            "infra.config.settings.rag_settings.docs_path",
-            str(tmp_path),
-        )
         db_path = tmp_path / "hr.db"
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE policy (body TEXT)")
@@ -108,114 +83,142 @@ class TestKnowledgeUseCases:
         conn.commit()
         conn.close()
 
-        from domain.schemas.knowledge import SyncDatabaseRequest
-
         status = SyncDatabase().execute(
-            SyncDatabaseRequest(
-                uri=f"sqlite:///{db_path}",
-                query="SELECT body FROM policy",
-                name="hr",
-                chunk_size=80,
-                chunk_overlap=10,
-            )
+            f"sqlite:///{db_path}",
+            "SELECT body FROM policy",
+            chunk_size=80,
+            overlap=10,
         )
         assert status.document_count >= 1
         assert any(
-            name.startswith("db/hr/") for name in [d.name for d in status.documents]
+            name.startswith("db/") for name in [d.name for d in status.documents]
         )
-        assert not (tmp_path / "db").exists()
 
-    def test_ingest_web_stays_in_memory(self, tmp_path: Path, monkeypatch):
-        from unittest.mock import patch
-
-        from llama_index.core import Document
-
-        from domain.schemas.knowledge import IngestWebRequest
-
-        monkeypatch.setattr(
-            "infra.config.settings.rag_settings.docs_path",
-            str(tmp_path),
-        )
+    def test_ingest_web_stays_in_memory(self):
+        url = "https://example.com/leave"
         with patch(
-            "app.services.knowledge.ingest_web.load_web_documents",
-            return_value=[
-                Document(
-                    text="公司年假 10 天。",
-                    metadata={"doc_name": "web/example/0.md"},
-                )
-            ],
+            "infra.rag.sources.LlamaWebLoader.load",
+            return_value=_web_doc(url, "公司年假 10 天。"),
         ):
-            status = IngestWeb().execute(
-                IngestWebRequest(
-                    url="https://example.com/leave",
-                    chunk_size=80,
-                    chunk_overlap=10,
-                )
-            )
+            status = IngestWeb().execute(url, chunk_size=80, overlap=10)
 
         assert any(
             name.startswith("web/") for name in [d.name for d in status.documents]
         )
-        assert not (tmp_path / "web").exists()
 
     def test_list_chunks_preview(self):
-        store = get_knowledge_store()
-        store.chunk_size = 100
-        store.chunk_overlap = 10
-        ingest_llama_documents(
-            store,
-            [Document(text="hello world", metadata={"doc_name": "a.md"})],
-            chunk_size=100,
-            overlap=10,
-        )
-
+        _ingest("a.md", "hello world", chunk_size=100, overlap=10)
         previews = ListChunks().execute(limit=5)
         assert len(previews) == 1
-        assert previews[0].content == "hello world"
+        assert previews[0].get_content() == "hello world"
 
-    def test_ingest_web_empty_keeps_existing_docs(self, tmp_path: Path, monkeypatch):
-        from unittest.mock import patch
+    def test_ingest_web_empty_keeps_existing_docs(self):
+        _ingest("old.md", "existing policy")
+        with patch(
+            "infra.rag.sources.LlamaWebLoader.load",
+            return_value=[
+                Document(text="   ", doc_id="web/empty", metadata={"source_id": "web/empty"})
+            ],
+        ):
+            with pytest.raises(BusinessException, match="没有可导入的知识内容"):
+                IngestWeb().execute("https://example.com", chunk_size=80)
 
-        from domain.schemas.knowledge import IngestWebRequest
+        assert [item.name for item in snapshot().documents] == ["old.md"]
 
-        monkeypatch.setattr(
-            "infra.config.settings.rag_settings.docs_path",
-            str(tmp_path),
-        )
-        store = get_knowledge_store()
-        store.docs_path = str(tmp_path)
-        ingest_llama_documents(
-            store,
-            [Document(text="existing policy", metadata={"doc_name": "old.md"})],
+    def test_ingest_web_keeps_other_urls(self):
+        def fake_load(url: str):
+            return _web_doc(url, f"正文 {url}")
+
+        with patch("infra.rag.sources.LlamaWebLoader.load", side_effect=fake_load):
+            IngestWeb().execute("https://example.com/a", chunk_size=80)
+            status = IngestWeb().execute("https://example.com/b", chunk_size=80)
+
+        names = [doc.name for doc in status.documents]
+        assert status.document_count == 2
+        assert web_source_id("https://example.com/a") in names
+        assert web_source_id("https://example.com/b") in names
+
+    def test_ingest_web_same_url_overwrites(self):
+        url = "https://example.com/leave"
+        with patch(
+            "infra.rag.sources.LlamaWebLoader.load",
+            return_value=_web_doc(url, "第一版年假政策。"),
+        ):
+            IngestWeb().execute(url, chunk_size=80)
+        with patch(
+            "infra.rag.sources.LlamaWebLoader.load",
+            return_value=_web_doc(url, "第二版年假政策。"),
+        ):
+            status = IngestWeb().execute(url, chunk_size=80)
+
+        joined = _chunk_text(web_source_id(url))
+        assert status.document_count == 1
+        assert "第二版" in joined
+        assert "第一版" not in joined
+
+    def test_sync_database_keeps_other_queries(self, tmp_path: Path):
+        import sqlite3
+
+        db_path = tmp_path / "hr.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE policy (id INTEGER, body TEXT)")
+        conn.execute("INSERT INTO policy VALUES (1, '年假 10 天。')")
+        conn.execute("INSERT INTO policy VALUES (2, '病假 5 天。')")
+        conn.commit()
+        conn.close()
+
+        uri = f"sqlite:///{db_path}"
+        SyncDatabase().execute(
+            uri,
+            "SELECT id, body FROM policy WHERE id = 1",
             chunk_size=80,
             overlap=10,
         )
+        status = SyncDatabase().execute(
+            uri,
+            "SELECT id, body FROM policy WHERE id = 2",
+            chunk_size=80,
+            overlap=10,
+        )
+        assert status.document_count == 2
 
-        with patch(
-            "app.services.knowledge.ingest_web.load_web_documents",
-            return_value=[Document(text="   ")],
-        ):
-            with pytest.raises(BusinessException, match="没有可导入的知识内容"):
-                IngestWeb().execute(
-                    IngestWebRequest(url="https://example.com", chunk_size=80)
-                )
+    def test_sync_database_same_query_replaces_rows(self, tmp_path: Path):
+        import sqlite3
 
-        assert get_knowledge_store().document_names == ["old.md"]
+        db_path = tmp_path / "hr.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE policy (id INTEGER, body TEXT)")
+        conn.execute("INSERT INTO policy VALUES (1, '年假 10 天。')")
+        conn.execute("INSERT INTO policy VALUES (2, '病假 5 天。')")
+        conn.commit()
+        conn.close()
 
-    def test_delete_document_removes_file_and_chunks(self, tmp_path: Path):
-        nested = tmp_path / "web" / "example"
-        nested.mkdir(parents=True)
-        (nested / "0.md").write_text("网页正文内容。", encoding="utf-8")
-        (tmp_path / "keep.md").write_text("保留文档内容。", encoding="utf-8")
-        load_docs(str(tmp_path), chunk_size=80, overlap=10)
+        uri = f"sqlite:///{db_path}"
+        query = "SELECT id, body FROM policy"
+        first = SyncDatabase().execute(uri, query, chunk_size=80, overlap=10)
+        assert first.document_count == 2
 
-        status = DeleteDocument().execute("web/example/0.md")
+        conn = sqlite3.connect(db_path)
+        conn.execute("DELETE FROM policy WHERE id = 2")
+        conn.commit()
+        conn.close()
 
-        assert "web/example/0.md" not in [doc.name for doc in status.documents]
+        second = SyncDatabase().execute(uri, query, chunk_size=80, overlap=10)
+        assert second.document_count == 1
+        assert "年假" in _chunk_text(second.documents[0].name)
+
+    def test_delete_document_removes_chunks(self):
+        ingest_documents(
+            [
+                Document(text="网页正文内容。", doc_id="remove.md"),
+                Document(text="保留文档内容。", doc_id="keep.md"),
+            ],
+            chunk_size=80,
+            overlap=10,
+        )
+        status = DeleteDocument().execute("remove.md")
+        assert "remove.md" not in [doc.name for doc in status.documents]
         assert any(doc.name == "keep.md" for doc in status.documents)
-        assert not (tmp_path / "web" / "example" / "0.md").exists()
-        assert not (tmp_path / "web").exists()
-        assert (tmp_path / "keep.md").exists()
 
     def test_delete_missing_document_raises(self):
         with pytest.raises(BusinessException, match="文档不存在"):

@@ -1,29 +1,39 @@
-from urllib.parse import urlparse
-
-from app.services.knowledge.common import ingest_source
+from app.services.knowledge.operations import ingest_documents
 from domain.exceptions import BusinessException
-from domain.schemas import knowledge as knowledge_schema
-from infra.rag.sources import load_web_documents, slug
+from domain.models.knowledge import KnowledgeSnapshot
+from infra.rag.sources import LlamaWebLoader
 
 
 class IngestWeb:
-    """从网页导入：正文只进内存，不落盘。"""
+    """从网页导入知识内容。"""
 
     def execute(
-        self, request: knowledge_schema.IngestWebRequest
-    ) -> knowledge_schema.KnowledgeSummary:
-        host = urlparse(request.url).netloc or "web"
-        name = slug(request.name or host)
-        prefix = f"web/{name}"
+        self,
+        url: str,
+        *,
+        chunk_size: int | None = None,
+        overlap: int | None = None,
+    ) -> KnowledgeSnapshot:
         try:
-            documents = load_web_documents(request.url, prefix=prefix)
+            documents = LlamaWebLoader().load(url)
         except BusinessException:
             raise
+        except ValueError as exc:
+            raise BusinessException(str(exc)) from exc
         except Exception as exc:
             raise BusinessException(f"网页导入失败: {exc}") from exc
-        return ingest_source(
+        source_id = next(
+            (
+                str(doc.metadata["source_id"])
+                for doc in documents
+                if doc.metadata.get("source_id")
+            ),
+            None,
+        )
+        return ingest_documents(
             documents,
-            prefix=prefix,
-            chunk_size=request.chunk_size,
-            overlap=request.chunk_overlap,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            replace_source=source_id,
+            default_id=source_id or "document",
         )

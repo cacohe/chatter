@@ -1,4 +1,4 @@
-"""前端配置：后端 API 地址与本轮对话历史条数上限。"""
+"""前端配置：后端 API 地址。"""
 
 import os
 
@@ -15,9 +15,6 @@ class Settings(BaseSettings):
         default="http://localhost:8000/api/v1.0",
         description="后端 API 地址",
     )
-    max_history_messages: int = Field(
-        default=10, description="最大历史消息数，用于控制上下文长度"
-    )
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -31,7 +28,6 @@ def _init_settings():
         backend_api_url=(
             os.getenv("BACKEND_API_URL") or "http://localhost:8000/api/v1.0"
         ).rstrip("/"),
-        max_history_messages=int(os.getenv("MAX_HISTORY_MESSAGES") or "10"),
     )
 
 

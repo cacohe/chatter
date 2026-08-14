@@ -1,59 +1,106 @@
-"""进程内知识库：LlamaIndex nodes 即分块，无独立向量库。"""
+"""Qdrant + LlamaIndex：分块的写入、删除与列举。"""
 
-from dataclasses import dataclass, field
+import json
+from typing import Any
 
-from llama_index.core.schema import BaseNode
+from llama_index.core.schema import NodeRelationship, RelatedNodeInfo, TextNode
 
-
-@dataclass
-class KnowledgeStore:
-    """单进程单例知识库。
-
-    sources 保留原文，供「重新分块」时把未落盘的上传/网页/库表再切一遍。
-    """
-
-    docs_path: str = ""
-    chunk_size: int = 500
-    chunk_overlap: int = 50
-    document_names: list[str] = field(default_factory=list)
-    nodes: list[BaseNode] = field(default_factory=list)
-    sources: dict[str, str] = field(default_factory=dict)
-
-    @property
-    def document_count(self) -> int:
-        return len(self.document_names)
-
-    def clear(self) -> None:
-        self.document_names = []
-        self.nodes = []
-        self.sources = {}
-
-    def remove_document(self, doc_name: str) -> None:
-        if doc_name in self.document_names:
-            self.document_names.remove(doc_name)
-        self.nodes = [
-            node for node in self.nodes if node.metadata.get("doc_name") != doc_name
-        ]
-        self.sources.pop(doc_name, None)
-
-    def remove_documents_with_prefix(self, prefix: str) -> None:
-        """删除同一来源前缀下的全部文档（如再次同步 db/hr）。"""
-        for name in list(self.document_names):
-            if name.startswith(prefix):
-                self.remove_document(name)
+from domain.models.knowledge import DocumentRecord
+from infra.logger import logger
+from infra.rag.vectorstore import delete_document, iter_point_payloads, upsert_nodes
 
 
-_store: KnowledgeStore | None = None
+class QdrantKnowledgeStore:
+    def upsert_chunks(self, chunks: list[TextNode]) -> None:
+        if not chunks:
+            return
+        upsert_nodes(chunks)
+        by_doc: dict[str, int] = {}
+        for chunk in chunks:
+            doc_id = str(chunk.metadata.get("doc_name") or "")
+            by_doc[doc_id] = by_doc.get(doc_id, 0) + 1
+        for doc_id, count in by_doc.items():
+            logger.info(f"Ingested RAG doc: {doc_id} ({count} chunks)")
+
+    def delete_document(self, doc_id: str) -> None:
+        delete_document(doc_id)
+
+    def list_documents(self) -> list[DocumentRecord]:
+        counts: dict[str, int] = {}
+        order: list[str] = []
+        for raw in iter_point_payloads():
+            payload = _flatten_payload(raw)
+            name = _doc_name(payload)
+            if not name:
+                continue
+            if name not in counts:
+                order.append(name)
+                counts[name] = 0
+            counts[name] += 1
+        return [DocumentRecord(name=name, chunk_count=counts[name]) for name in order]
+
+    def list_chunks(
+        self, *, doc_id: str | None = None, limit: int = 50
+    ) -> list[TextNode]:
+        records: list[TextNode] = []
+        for raw in iter_point_payloads():
+            payload = _flatten_payload(raw)
+            name = _doc_name(payload)
+            if doc_id and name != doc_id:
+                continue
+            index = _chunk_index(payload)
+            node = TextNode(
+                text=_text(payload),
+                metadata={"doc_name": name, "chunk_index": index},
+            )
+            node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=name)
+            records.append(node)
+        records.sort(
+            key=lambda item: (
+                str(item.metadata.get("doc_name") or ""),
+                int(item.metadata.get("chunk_index") or 0),
+            )
+        )
+        if limit < 1:
+            return []
+        return records[:limit]
 
 
-def get_knowledge_store() -> KnowledgeStore:
-    """懒创建全局知识库；启动 lifespan 会再被 load_docs 替换。"""
-    global _store
-    if _store is None:
-        _store = KnowledgeStore()
-    return _store
+def _flatten_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(payload)
+    raw = data.get("_node_content")
+    if not isinstance(raw, str):
+        return data
+    try:
+        node = json.loads(raw)
+    except json.JSONDecodeError:
+        return data
+    if not isinstance(node, dict):
+        return data
+    meta = node.get("metadata")
+    if isinstance(meta, dict):
+        for key, value in meta.items():
+            data.setdefault(key, value)
+    if node.get("text") and not data.get("text"):
+        data["text"] = node["text"]
+    return data
 
 
-def set_knowledge_store(store: KnowledgeStore) -> None:
-    global _store
-    _store = store
+def _doc_name(payload: dict[str, Any]) -> str:
+    for key in ("doc_name", "doc_id", "ref_doc_id", "document_id"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _chunk_index(payload: dict[str, Any]) -> int:
+    try:
+        return int(payload.get("chunk_index") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _text(payload: dict[str, Any]) -> str:
+    value = payload.get("text")
+    return str(value) if value is not None else ""

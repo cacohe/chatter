@@ -1,4 +1,13 @@
-"""知识库路由：每个接口对应一个用例，不在此层处理分块/检索细节。"""
+"""
+知识库相关路由
+
+- 从文件导入数据
+- 从网页导入数据
+- 从数据库导入数据
+- 获取知识库摘要
+- 获取文档分块列表
+- 删除文档
+"""
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
@@ -7,41 +16,18 @@ from api.deps import (
     get_ingest_web,
     get_knowledge_summary,
     get_list_chunks,
-    get_reload_knowledge,
     get_sync_database,
     get_upload_files,
 )
+from api.schemas import knowledge as knowledge_schema
 from app.services.knowledge.delete_document import DeleteDocument
 from app.services.knowledge.get_summary import GetSummary
 from app.services.knowledge.ingest_web import IngestWeb
 from app.services.knowledge.list_chunks import ListChunks
-from app.services.knowledge.reload import ReloadKnowledge
 from app.services.knowledge.sync_database import SyncDatabase
 from app.services.knowledge.upload_files import UploadFiles
-from domain.schemas import knowledge as knowledge_schema
 
 knowledge_router = APIRouter(prefix="/api/v1.0/knowledge", tags=["knowledge"])
-
-
-@knowledge_router.get("/summary", response_model=knowledge_schema.KnowledgeSummary)
-async def knowledge_summary(
-    usecase: GetSummary = Depends(get_knowledge_summary),
-):
-    """
-    获取知识库摘要
-    """
-    return usecase.execute()
-
-
-@knowledge_router.post("/reload", response_model=knowledge_schema.KnowledgeSummary)
-async def knowledge_reload(
-    request: knowledge_schema.ReloadKnowledgeRequest,
-    usecase: ReloadKnowledge = Depends(get_reload_knowledge),
-):
-    """
-    按新参数重新分块
-    """
-    return usecase.execute(request)
 
 
 @knowledge_router.post("/upload", response_model=knowledge_schema.KnowledgeSummary)
@@ -58,10 +44,29 @@ async def knowledge_upload(
     for upload in files:
         content = await upload.read()
         payload.append((upload.filename or "upload.txt", content))
-    return usecase.execute(
-        payload,
-        chunk_size=chunk_size,
-        overlap=chunk_overlap,
+    return knowledge_schema.to_summary(
+        usecase.execute(
+            payload,
+            chunk_size=chunk_size,
+            overlap=chunk_overlap,
+        )
+    )
+
+
+@knowledge_router.post("/ingest/web", response_model=knowledge_schema.KnowledgeSummary)
+async def knowledge_ingest_web(
+    request: knowledge_schema.IngestWebRequest,
+    usecase: IngestWeb = Depends(get_ingest_web),
+):
+    """
+    从网页加载知识库
+    """
+    return knowledge_schema.to_summary(
+        usecase.execute(
+            request.url,
+            chunk_size=request.chunk_size,
+            overlap=request.chunk_overlap,
+        )
     )
 
 
@@ -75,29 +80,24 @@ async def knowledge_sync_database(
     """
     从数据库导入知识库
     """
-    return usecase.execute(request)
+    return knowledge_schema.to_summary(
+        usecase.execute(
+            request.uri,
+            request.query,
+            chunk_size=request.chunk_size,
+            overlap=request.chunk_overlap,
+        )
+    )
 
 
-@knowledge_router.post("/ingest/web", response_model=knowledge_schema.KnowledgeSummary)
-async def knowledge_ingest_web(
-    request: knowledge_schema.IngestWebRequest,
-    usecase: IngestWeb = Depends(get_ingest_web),
+@knowledge_router.get("/summary", response_model=knowledge_schema.KnowledgeSummary)
+async def knowledge_summary(
+    usecase: GetSummary = Depends(get_knowledge_summary),
 ):
     """
-    从网页加载知识库
+    获取知识库摘要
     """
-    return usecase.execute(request)
-
-
-@knowledge_router.delete("/documents", response_model=knowledge_schema.KnowledgeSummary)
-async def knowledge_delete_document(
-    doc_name: str,
-    usecase: DeleteDocument = Depends(get_delete_document),
-):
-    """
-    删除文档
-    """
-    return usecase.execute(doc_name)
+    return knowledge_schema.to_summary(usecase.execute())
 
 
 @knowledge_router.get("/chunks", response_model=list[knowledge_schema.ChunkPreview])
@@ -109,4 +109,22 @@ async def knowledge_chunks(
     """
     获取文档分块列表
     """
-    return usecase.execute(doc_name=doc_name, limit=limit)
+    return [
+        knowledge_schema.ChunkPreview(
+            doc_name=str(item.metadata.get("doc_name") or ""),
+            chunk_index=int(item.metadata.get("chunk_index") or 0),
+            content=item.get_content(),
+        )
+        for item in usecase.execute(doc_name=doc_name, limit=limit)
+    ]
+
+
+@knowledge_router.delete("/documents", response_model=knowledge_schema.KnowledgeSummary)
+async def knowledge_delete_document(
+    doc_name: str,
+    usecase: DeleteDocument = Depends(get_delete_document),
+):
+    """
+    删除文档
+    """
+    return knowledge_schema.to_summary(usecase.execute(doc_name))

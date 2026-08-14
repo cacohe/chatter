@@ -1,28 +1,25 @@
-"""本轮对话消息存在 st.session_state，刷新页面即丢失。"""
+"""本页只保留 session_id；完整展示历史由后端保存，前端通过 API 拉取。"""
+
+from uuid import uuid4
 
 import streamlit as st
 
 
 class SessionState:
-    """对 Streamlit 会话字典的薄封装，避免各组件直接读写 messages。"""
+    """会话标识。展示历史不放在前端，也不参与模型上下文。"""
 
     @property
-    def messages(self) -> list[dict[str, str]]:
-        return st.session_state.get("messages") or []
+    def session_id(self) -> str:
+        sid = st.session_state.get("session_id")
+        if not sid:
+            sid = str(uuid4())
+            st.session_state["session_id"] = sid
+        return str(sid)
 
-    @messages.setter
-    def messages(self, value: list) -> None:
-        st.session_state["messages"] = value
-
-    @staticmethod
-    def add_message(role: str, content: str, **kwargs) -> None:
-        msg = {"role": role, "content": content, **kwargs}
-        if "messages" not in st.session_state or st.session_state["messages"] is None:
-            st.session_state["messages"] = []
-        st.session_state["messages"].append(msg)
-
-    def clear_messages(self) -> None:
-        st.session_state["messages"] = []
+    def new_session(self) -> str:
+        sid = str(uuid4())
+        st.session_state["session_id"] = sid
+        return sid
 
 
 session_state = SessionState()

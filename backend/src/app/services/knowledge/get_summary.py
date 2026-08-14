@@ -1,9 +1,9 @@
-from app.services.knowledge.common import build_summary
-from domain.schemas import knowledge as knowledge_schema
+from app.services.knowledge.operations import snapshot
+from domain.models.knowledge import KnowledgeSnapshot
 
 
 class GetSummary:
-    """返回当前进程内知识库快照。"""
+    """返回当前知识库快照。"""
 
-    def execute(self) -> knowledge_schema.KnowledgeSummary:
-        return build_summary()
+    def execute(self) -> KnowledgeSnapshot:
+        return snapshot()

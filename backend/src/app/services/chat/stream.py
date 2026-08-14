@@ -1,13 +1,14 @@
-"""流式问答用例：BM25 检索 → 拼进 system prompt → LiteLLM 吐 token。"""
-
 from collections.abc import AsyncGenerator
 
+from llama_index.core.schema import TextNode
+
 from domain.exceptions import BusinessException
-from domain.schemas import chat as chat_schema
+from domain.models.chat import ChatMessage, MessageRole
+from infra.chat import history, memory
 from infra.config import settings
 from infra.llm.client import stream_chat
 from infra.logger import logger
-from infra.rag.retriever import format_context, retrieve
+from infra.rag.runtime import get_retriever
 
 _SYSTEM_PROMPT = (
     "你是一个知识库问答助手。请优先依据「参考文档」回答用户问题；"
@@ -15,34 +16,37 @@ _SYSTEM_PROMPT = (
 )
 
 
+def format_context(chunks: list[TextNode]) -> str:
+    if not chunks:
+        return ""
+    parts = [
+        f"[{index}] 来源: {chunk.metadata.get('doc_name') or ''}\n{chunk.get_content()}"
+        for index, chunk in enumerate(chunks, start=1)
+    ]
+    return "\n\n".join(parts)
+
+
 class StreamChat:
-    """单次问答：检索知识库后流式生成回答。"""
+    """单次问答，生成流式回答"""
 
-    @property
-    def max_history_messages(self) -> int:
-        return settings.llm_settings.max_history_messages
-
-    def _history_from_request(
-        self, request: chat_schema.ChatRequest
-    ) -> list[dict[str, str]]:
-        if not request.history:
-            return []
-
-        history: list[dict[str, str]] = []
-        for msg in request.history[-self.max_history_messages :]:
-            role = msg.role.value if hasattr(msg.role, "value") else str(msg.role)
-            role = role.lower()
-            if role not in ("user", "assistant"):
+    def _get_chat_context(self, session_id: str) -> list[dict[str, str]]:
+        """获取对话上下文。"""
+        context: list[dict[str, str]] = []
+        for msg in memory.get_messages(session_id):
+            if msg.role not in (MessageRole.USER, MessageRole.ASSISTANT):
                 continue
-            history.append({"role": role, "content": msg.content})
-        return history
+            context.append({"role": msg.role.value, "content": msg.content})
+        return context
 
-    def _build_messages(self, request: chat_schema.ChatRequest) -> list[dict[str, str]]:
+    def _build_messages(self, session_id: str, content: str) -> list[dict[str, str]]:
+        """
+        构建完整的、需要输入LLM的消息
+        """
         messages: list[dict[str, str]] = [{"role": "system", "content": _SYSTEM_PROMPT}]
 
-        # 用当前问题检索，命中的分块作为第二段 system，约束模型勿编造
-        related_chunks = retrieve(request.content)
+        related_chunks = get_retriever().retrieve(content, settings.rag_settings.top_k)
         context = format_context(related_chunks)
+
         if context:
             messages.append(
                 {"role": "system", "content": f"以下是参考文档内容:\n{context}"}
@@ -51,21 +55,46 @@ class StreamChat:
         else:
             logger.info("RAG retrieved no chunks for query")
 
-        messages.extend(self._history_from_request(request))
-        messages.append({"role": "user", "content": request.content})
+        messages.extend(self._get_chat_context(session_id))
+        messages.append({"role": "user", "content": content})
         return messages
 
-    async def execute(
-        self, request: chat_schema.ChatRequest
-    ) -> AsyncGenerator[str, None]:
+    def _save_messages(self, session_id: str, content: str, full_response: str):
+        """
+        保存消息到历史消息列表和短期记忆
+        """
+        message_pair = [
+            ChatMessage(role=MessageRole.USER, content=content),
+            ChatMessage(role=MessageRole.ASSISTANT, content=full_response),
+        ]
+        history.append_history(session_id, message_pair)
+        memory.append_messages(session_id, message_pair)
+
+    async def execute(self, session_id: str, content: str) -> AsyncGenerator[str, None]:
+        """
+        流式输出回答
+        """
+        full_response = ""
+        failed = False
+
         try:
-            messages = self._build_messages(request)
+            messages = self._build_messages(session_id, content)
             async for chunk in stream_chat(messages):
+                if chunk.startswith("Error:"):
+                    failed = True
+                else:
+                    full_response += chunk
                 yield chunk
         except BusinessException as e:
+            failed = True
             logger.exception("Chat stream processing failed")
-            # SSE 已 200，只能在帧内带 Error: 前缀让前端展示
             yield f"Error: {e.message}"
         except Exception as e:
+            failed = True
             logger.exception("Chat stream processing failed")
             yield f"Error: {e!s}"
+
+        if failed or not full_response.strip():
+            return
+
+        self._save_messages(session_id, content, full_response)
