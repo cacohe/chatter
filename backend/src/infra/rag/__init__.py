@@ -1,1 +1,1 @@
-"""RAG 基础设施：Qdrant / LlamaIndex / DashScope 适配器。"""
+"""RAG 基础设施：LlamaIndex 加载 / 切分 / 向量化。"""
