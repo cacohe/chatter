@@ -117,7 +117,9 @@ class TestKnowledgeUseCases:
         with patch(
             "infra.rag.sources.LlamaWebLoader.load",
             return_value=[
-                Document(text="   ", doc_id="web/empty", metadata={"source_id": "web/empty"})
+                Document(
+                    text="   ", doc_id="web/empty", metadata={"source_id": "web/empty"}
+                )
             ],
         ):
             with pytest.raises(BusinessException, match="没有可导入的知识内容"):
