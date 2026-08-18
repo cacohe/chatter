@@ -1,4 +1,4 @@
-from app.services.knowledge.operations import snapshot
+from app.services.knowledge.shared import snapshot
 from domain.models.knowledge import KnowledgeSnapshot
 
 

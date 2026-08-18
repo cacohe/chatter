@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from llama_index.core import Document
 
-from app.services.knowledge.operations import ingest_documents
+from app.services.knowledge.shared import ingest_documents
 from main import app
 
 

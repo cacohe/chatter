@@ -3,7 +3,7 @@
 import pytest
 from llama_index.core.embeddings.mock_embed_model import MockEmbedding
 
-import app.services.knowledge.operations as kb_ops
+import app.services.knowledge.shared as kb_ops
 import infra.rag.runtime as rag_runtime
 from infra.chat.history import reset_histories
 from infra.chat.memory import reset_memory

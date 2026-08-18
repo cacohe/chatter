@@ -10,6 +10,8 @@ class StartNewChat:
         sid = (session_id or "").strip()
         if not sid:
             raise BusinessException("请指定会话")
+
+        # 清空对话历史 与 LLM 短期记忆
         history.clear_history(sid)
         memory.clear_session(sid)
         logger.info(

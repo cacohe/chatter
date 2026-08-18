@@ -1,6 +1,5 @@
 """统一的 Qdrant 客户端：连接、入库、列举、按文档删除、检索。"""
 
-import json
 from typing import Any
 
 from llama_index.core import VectorStoreIndex
@@ -30,18 +29,24 @@ class Client:
         self._doc_id_indexed = False
 
     def upsert_chunks(self, chunks: list[TextNode]) -> None:
+        """
+        将切分后的文档块写入 Qdrant 向量库
+        """
         if not chunks:
             return
         self._get_index().insert_nodes(chunks)
         self._ensure_doc_id_index()
         by_doc: dict[str, int] = {}
         for chunk in chunks:
-            doc_id = str(chunk.metadata.get("doc_name") or "")
+            doc_id = _node_doc_id(chunk)
             by_doc[doc_id] = by_doc.get(doc_id, 0) + 1
         for doc_id, count in by_doc.items():
             logger.info(f"Ingested RAG doc: {doc_id} ({count} chunks)")
 
     def delete_document(self, doc_id: str) -> None:
+        """
+        按 doc_id 批量删除 Qdrant 向量库中 对应文档的所有文档块
+        """
         if not doc_id or not self._collection_ready():
             return
         self._ensure_doc_id_index()
@@ -58,37 +63,46 @@ class Client:
         )
 
     def list_documents(self) -> list[DocumentRecord]:
+        """
+        列出 Qdrant 向量库中 所有文档的文档块
+        """
         counts: dict[str, int] = {}
         order: list[str] = []
-        for _, raw in self._iter_points():
-            name = _doc_name(_flatten_payload(raw))
-            if not name:
+        for _, payload in self._iter_points():
+            doc_id = _payload_doc_id(payload)
+            if not doc_id:
                 continue
-            if name not in counts:
-                order.append(name)
-                counts[name] = 0
-            counts[name] += 1
+            if doc_id not in counts:
+                order.append(doc_id)
+                counts[doc_id] = 0
+            counts[doc_id] += 1
         return [DocumentRecord(name=name, chunk_count=counts[name]) for name in order]
 
     def list_chunks(
         self, *, doc_id: str | None = None, limit: int = 50
     ) -> list[TextNode]:
+        """
+        列出 Qdrant 向量库中 指定文档的文档块
+        """
         records: list[TextNode] = []
-        for _, raw in self._iter_points():
-            payload = _flatten_payload(raw)
-            name = _doc_name(payload)
-            if doc_id and name != doc_id:
+        for _, payload in self._iter_points():
+            current_doc_id = _payload_doc_id(payload)
+            if not current_doc_id:
                 continue
-            index = _chunk_index(payload)
+            if doc_id and current_doc_id != doc_id:
+                continue
+            index = _payload_chunk_index(payload)
             node = TextNode(
-                text=_text(payload),
-                metadata={"doc_name": name, "chunk_index": index},
+                text=_payload_text(payload),
+                metadata=_node_metadata(payload, current_doc_id, index),
             )
-            node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=name)
+            node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(
+                node_id=current_doc_id
+            )
             records.append(node)
         records.sort(
             key=lambda item: (
-                str(item.metadata.get("doc_name") or ""),
+                str(item.metadata.get("doc_id") or ""),
                 int(item.metadata.get("chunk_index") or 0),
             )
         )
@@ -97,6 +111,9 @@ class Client:
         return records[:limit]
 
     def retrieve(self, query: str, top_k: int) -> list[TextNode]:
+        """
+        检索 Qdrant 向量库中 与查询最相似的文档块，返回前 top_k 个
+        """
         if not self._collection_ready():
             return []
         try:
@@ -116,6 +133,9 @@ class Client:
         return nodes
 
     def reset(self) -> None:
+        """
+        重置 Qdrant 向量库
+        """
         name = self._collection
         if self._raw is not None:
             try:
@@ -135,7 +155,7 @@ class Client:
     def _get_raw(self) -> QdrantClient:
         if self._raw is None:
             url = settings.rag_settings.qdrant_url
-            if _is_memory_url(url):
+            if _use_in_memory_qdrant():
                 self._raw = QdrantClient(":memory:")
             else:
                 if not url:
@@ -187,7 +207,7 @@ class Client:
 
     def _ensure_doc_id_index(self) -> None:
         """云端按 doc_id 过滤删除需要 keyword 索引；已有 collection 不会自动补建。"""
-        if self._doc_id_indexed or _is_memory_url(settings.rag_settings.qdrant_url):
+        if self._doc_id_indexed or _use_in_memory_qdrant():
             return
         if not self._collection_ready():
             return
@@ -222,41 +242,48 @@ def _is_memory_url(url: str) -> bool:
     return url.strip().lower() in {"", ":memory:", "memory"}
 
 
-def _flatten_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    data = dict(payload)
-    raw = data.get("_node_content")
-    if not isinstance(raw, str):
-        return data
-    try:
-        node = json.loads(raw)
-    except json.JSONDecodeError:
-        return data
-    if not isinstance(node, dict):
-        return data
-    meta = node.get("metadata")
-    if isinstance(meta, dict):
-        for key, value in meta.items():
-            data.setdefault(key, value)
-    if node.get("text") and not data.get("text"):
-        data["text"] = node["text"]
-    return data
+def _use_in_memory_qdrant() -> bool:
+    mode = settings.rag_settings.qdrant_mode.strip().lower()
+    if mode:
+        if mode not in {"memory", "cloud"}:
+            raise ValueError("QDRANT_MODE 仅支持 memory 或 cloud")
+        return mode == "memory"
+    return _is_memory_url(settings.rag_settings.qdrant_url)
 
 
-def _doc_name(payload: dict[str, Any]) -> str:
-    for key in ("doc_name", "doc_id", "ref_doc_id", "document_id"):
-        value = payload.get(key)
-        if value:
-            return str(value)
-    return ""
+def _payload_doc_id(payload: dict[str, Any]) -> str:
+    value = payload.get("doc_id")
+    return str(value) if value else ""
 
 
-def _chunk_index(payload: dict[str, Any]) -> int:
+def _payload_chunk_index(payload: dict[str, Any]) -> int:
     try:
         return int(payload.get("chunk_index") or 0)
     except (TypeError, ValueError):
         return 0
 
 
-def _text(payload: dict[str, Any]) -> str:
+def _payload_text(payload: dict[str, Any]) -> str:
     value = payload.get("text")
     return str(value) if value is not None else ""
+
+
+def _node_doc_id(node: TextNode) -> str:
+    value = node.metadata.get("doc_id")
+    return str(value) if value else ""
+
+
+def _node_metadata(payload: dict[str, Any], doc_id: str, chunk_index: int) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "doc_id": doc_id,
+        "doc_name": str(payload.get("doc_name") or doc_id),
+        "chunk_index": chunk_index,
+    }
+    for key in ("source_id", "source_type", "source_uri"):
+        value = payload.get(key)
+        if value is not None:
+            metadata[key] = value
+    score = payload.get("score")
+    if score is not None:
+        metadata["score"] = score
+    return metadata

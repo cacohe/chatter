@@ -1,7 +1,7 @@
-from app.services.knowledge.operations import ingest_documents
+from app.services.knowledge.shared import ingest_documents
 from domain.exceptions import BusinessException
 from domain.models.knowledge import KnowledgeSnapshot
-from infra.rag.sources import LlamaWebLoader
+from infra.rag.sources import WebLoader
 
 
 class IngestWeb:
@@ -15,7 +15,7 @@ class IngestWeb:
         overlap: int | None = None,
     ) -> KnowledgeSnapshot:
         try:
-            documents = LlamaWebLoader().load(url)
+            documents = WebLoader().load(url)
         except BusinessException:
             raise
         except ValueError as exc:

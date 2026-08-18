@@ -9,12 +9,13 @@ from llama_index.core import Document
 from app.services.knowledge.delete_document import DeleteDocument
 from app.services.knowledge.ingest_web import IngestWeb
 from app.services.knowledge.list_chunks import ListChunks
-from app.services.knowledge.operations import ingest_documents, list_chunks, snapshot
+from app.services.knowledge.shared import ingest_documents, list_chunks, snapshot
 from app.services.knowledge.sync_database import SyncDatabase
 from app.services.knowledge.upload_files import UploadFiles
 from domain.exceptions import BusinessException
 from domain.models.knowledge import validate_chunk_params
-from infra.rag.identity import web_source_id
+from infra.config import settings
+from infra.rag.sources import WebLoader
 
 
 def _ingest(doc_id: str, text: str, *, chunk_size: int = 80, overlap: int = 10):
@@ -32,8 +33,16 @@ def _chunk_text(doc_name: str) -> str:
 
 
 def _web_doc(url: str, text: str) -> list[Document]:
-    source_id = web_source_id(url)
+    source_id = WebLoader().source_id(url)
     return [Document(text=text, doc_id=source_id, metadata={"source_id": source_id})]
+
+
+def _set_rag_limits(monkeypatch, **updates) -> None:
+    monkeypatch.setattr(
+        settings,
+        "rag_settings",
+        settings.rag_settings.model_copy(update=updates),
+    )
 
 
 class TestChunkHelpers:
@@ -73,6 +82,31 @@ class TestKnowledgeUseCases:
         with pytest.raises(BusinessException):
             UploadFiles().execute([])
 
+    def test_upload_rejects_too_many_files(self, monkeypatch):
+        _set_rag_limits(monkeypatch, max_upload_files=1)
+        with pytest.raises(BusinessException, match="最多上传 1 个文件"):
+            UploadFiles().execute(
+                [
+                    ("a.md", "a".encode("utf-8")),
+                    ("b.md", "b".encode("utf-8")),
+                ]
+            )
+
+    def test_upload_rejects_large_single_file(self, monkeypatch):
+        _set_rag_limits(monkeypatch, max_upload_file_bytes=4)
+        with pytest.raises(BusinessException, match="超过大小上限"):
+            UploadFiles().execute([("a.md", "hello".encode("utf-8"))])
+
+    def test_upload_rejects_large_total_size(self, monkeypatch):
+        _set_rag_limits(monkeypatch, max_upload_total_bytes=5)
+        with pytest.raises(BusinessException, match="总大小超过上限"):
+            UploadFiles().execute(
+                [
+                    ("a.md", "abc".encode("utf-8")),
+                    ("b.md", "def".encode("utf-8")),
+                ]
+            )
+
     def test_sync_database(self, tmp_path: Path):
         import sqlite3
 
@@ -94,10 +128,65 @@ class TestKnowledgeUseCases:
             name.startswith("db/") for name in [d.name for d in status.documents]
         )
 
+    def test_sync_database_rejects_non_select(self, tmp_path: Path):
+        db_path = tmp_path / "hr.db"
+        with pytest.raises(BusinessException, match="仅允许执行 SELECT 查询"):
+            SyncDatabase().execute(
+                f"sqlite:///{db_path}",
+                "DELETE FROM policy",
+                chunk_size=80,
+            )
+
+    def test_sync_database_rejects_multiple_statements(self, tmp_path: Path):
+        db_path = tmp_path / "hr.db"
+        with pytest.raises(BusinessException, match="仅允许执行单条 SELECT 查询"):
+            SyncDatabase().execute(
+                f"sqlite:///{db_path}",
+                "SELECT 1; SELECT 2",
+                chunk_size=80,
+            )
+
+    def test_sync_database_rejects_too_many_rows(self, tmp_path: Path, monkeypatch):
+        import sqlite3
+
+        _set_rag_limits(monkeypatch, db_max_rows=1)
+        db_path = tmp_path / "hr.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE policy (body TEXT)")
+        conn.execute("INSERT INTO policy VALUES ('年假 10 天。')")
+        conn.execute("INSERT INTO policy VALUES ('病假 5 天。')")
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(BusinessException, match="超过行数上限"):
+            SyncDatabase().execute(
+                f"sqlite:///{db_path}",
+                "SELECT body FROM policy",
+                chunk_size=80,
+            )
+
+    def test_sync_database_rejects_too_long_row(self, tmp_path: Path, monkeypatch):
+        import sqlite3
+
+        _set_rag_limits(monkeypatch, db_max_chars_per_row=5)
+        db_path = tmp_path / "hr.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE policy (body TEXT)")
+        conn.execute("INSERT INTO policy VALUES (?)", ("这是一条很长的制度文本。",))
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(BusinessException, match="单行数据库记录超过长度上限"):
+            SyncDatabase().execute(
+                f"sqlite:///{db_path}",
+                "SELECT body FROM policy",
+                chunk_size=80,
+            )
+
     def test_ingest_web_stays_in_memory(self):
         url = "https://example.com/leave"
         with patch(
-            "infra.rag.sources.LlamaWebLoader.load",
+            "infra.rag.sources.WebLoader.load",
             return_value=_web_doc(url, "公司年假 10 天。"),
         ):
             status = IngestWeb().execute(url, chunk_size=80, overlap=10)
@@ -105,6 +194,35 @@ class TestKnowledgeUseCases:
         assert any(
             name.startswith("web/") for name in [d.name for d in status.documents]
         )
+
+    def test_ingest_web_rejects_non_http_scheme(self):
+        with pytest.raises(BusinessException, match="仅支持 http/https"):
+            IngestWeb().execute("ftp://example.com/file.txt", chunk_size=80)
+
+    def test_ingest_web_rejects_localhost(self):
+        with pytest.raises(BusinessException, match="不允许抓取内网或本机地址"):
+            IngestWeb().execute("http://localhost:8000/health", chunk_size=80)
+
+    def test_ingest_web_rejects_loopback_ip(self):
+        with pytest.raises(BusinessException, match="不允许抓取内网或本机地址"):
+            IngestWeb().execute("http://127.0.0.1/health", chunk_size=80)
+
+    def test_ingest_web_rejects_too_long_content(self, monkeypatch):
+        _set_rag_limits(monkeypatch, web_max_content_chars=10)
+        with (
+            patch(
+                "infra.rag.sources.socket.getaddrinfo",
+                return_value=[(0, 0, 0, "", ("93.184.216.34", 0))],
+            ),
+            patch(
+                "infra.rag.sources.WebLoader._HeaderWebPageReader.load_data",
+                return_value=[
+                    Document(text="x" * 11, metadata={"url": "https://example.com"})
+                ],
+            ),
+        ):
+            with pytest.raises(BusinessException, match="网页正文超过长度上限"):
+                IngestWeb().execute("https://example.com/leave", chunk_size=80)
 
     def test_list_chunks_preview(self):
         _ingest("a.md", "hello world", chunk_size=100, overlap=10)
@@ -115,7 +233,7 @@ class TestKnowledgeUseCases:
     def test_ingest_web_empty_keeps_existing_docs(self):
         _ingest("old.md", "existing policy")
         with patch(
-            "infra.rag.sources.LlamaWebLoader.load",
+            "infra.rag.sources.WebLoader.load",
             return_value=[
                 Document(
                     text="   ", doc_id="web/empty", metadata={"source_id": "web/empty"}
@@ -131,29 +249,29 @@ class TestKnowledgeUseCases:
         def fake_load(url: str):
             return _web_doc(url, f"正文 {url}")
 
-        with patch("infra.rag.sources.LlamaWebLoader.load", side_effect=fake_load):
+        with patch("infra.rag.sources.WebLoader.load", side_effect=fake_load):
             IngestWeb().execute("https://example.com/a", chunk_size=80)
             status = IngestWeb().execute("https://example.com/b", chunk_size=80)
 
         names = [doc.name for doc in status.documents]
         assert status.document_count == 2
-        assert web_source_id("https://example.com/a") in names
-        assert web_source_id("https://example.com/b") in names
+        assert WebLoader().source_id("https://example.com/a") in names
+        assert WebLoader().source_id("https://example.com/b") in names
 
     def test_ingest_web_same_url_overwrites(self):
         url = "https://example.com/leave"
         with patch(
-            "infra.rag.sources.LlamaWebLoader.load",
+            "infra.rag.sources.WebLoader.load",
             return_value=_web_doc(url, "第一版年假政策。"),
         ):
             IngestWeb().execute(url, chunk_size=80)
         with patch(
-            "infra.rag.sources.LlamaWebLoader.load",
+            "infra.rag.sources.WebLoader.load",
             return_value=_web_doc(url, "第二版年假政策。"),
         ):
             status = IngestWeb().execute(url, chunk_size=80)
 
-        joined = _chunk_text(web_source_id(url))
+        joined = _chunk_text(WebLoader().source_id(url))
         assert status.document_count == 1
         assert "第二版" in joined
         assert "第一版" not in joined

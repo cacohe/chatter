@@ -20,9 +20,28 @@ class _RAGSettings(BaseSettings):
     top_k: int = Field(default=4, description="检索返回的分块数量")
     chunk_size: int = Field(default=500, description="文档分块大小")
     chunk_overlap: int = Field(default=50, description="分块重叠长度")
+    max_upload_files: int = Field(default=10, description="单次最多上传文件数")
+    max_upload_file_bytes: int = Field(
+        default=10 * 1024 * 1024, description="单个上传文件的最大字节数"
+    )
+    max_upload_total_bytes: int = Field(
+        default=25 * 1024 * 1024, description="单次上传文件总字节数上限"
+    )
+    web_fetch_timeout_seconds: int = Field(default=10, description="网页抓取超时时间")
+    web_max_content_chars: int = Field(
+        default=200_000, description="单个网页正文允许导入的最大字符数"
+    )
+    db_max_rows: int = Field(default=1000, description="单次数据库同步最大行数")
+    db_max_chars_per_row: int = Field(
+        default=20_000, description="单行数据库记录允许导入的最大字符数"
+    )
+    qdrant_mode: str = Field(
+        default="",
+        description="Qdrant 运行模式：memory 或 cloud；未设置时兼容旧版按 URL 推断",
+    )
     qdrant_url: str = Field(
         default="",
-        description="Qdrant Cloud 集群 URL；:memory: 仅用于单元测试",
+        description="Qdrant Cloud 集群 URL；legacy 下可用 :memory: 表示内存模式",
     )
     qdrant_api_key: str = Field(default="", description="Qdrant Cloud API Key")
     qdrant_collection: str = Field(
@@ -94,6 +113,22 @@ def _init_settings():
             top_k=int(os.getenv("RAG_TOP_K") or "4"),
             chunk_size=int(os.getenv("RAG_CHUNK_SIZE") or "500"),
             chunk_overlap=int(os.getenv("RAG_CHUNK_OVERLAP") or "50"),
+            max_upload_files=int(os.getenv("RAG_MAX_UPLOAD_FILES") or "10"),
+            max_upload_file_bytes=int(
+                os.getenv("RAG_MAX_UPLOAD_FILE_BYTES") or str(10 * 1024 * 1024)
+            ),
+            max_upload_total_bytes=int(
+                os.getenv("RAG_MAX_UPLOAD_TOTAL_BYTES") or str(25 * 1024 * 1024)
+            ),
+            web_fetch_timeout_seconds=int(
+                os.getenv("RAG_WEB_FETCH_TIMEOUT_SECONDS") or "10"
+            ),
+            web_max_content_chars=int(
+                os.getenv("RAG_WEB_MAX_CONTENT_CHARS") or "200000"
+            ),
+            db_max_rows=int(os.getenv("RAG_DB_MAX_ROWS") or "1000"),
+            db_max_chars_per_row=int(os.getenv("RAG_DB_MAX_CHARS_PER_ROW") or "20000"),
+            qdrant_mode=os.getenv("QDRANT_MODE") or "",
             qdrant_url=os.getenv("QDRANT_URL") or "",
             qdrant_api_key=os.getenv("QDRANT_API_KEY") or "",
             qdrant_collection=os.getenv("QDRANT_COLLECTION") or "chatter",

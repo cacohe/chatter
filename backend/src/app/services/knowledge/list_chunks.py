@@ -1,6 +1,6 @@
 from llama_index.core.schema import TextNode
 
-from app.services.knowledge.operations import list_chunks
+from app.services.knowledge.shared import list_chunks
 
 
 class ListChunks:

@@ -17,6 +17,9 @@ _current_params: ChunkParams | None = None
 
 
 def snapshot() -> KnowledgeSnapshot:
+    """
+    获取知识库的快照
+    """
     return KnowledgeSnapshot(
         documents=get_store().list_documents(),
         chunk_params=_current_params or default_chunk_params(),
@@ -24,6 +27,9 @@ def snapshot() -> KnowledgeSnapshot:
 
 
 def list_chunks(*, doc_id: str | None = None, limit: int = 50) -> list[TextNode]:
+    """
+    列出 向量数据库中 指定文档的文档块
+    """
     return get_store().list_chunks(doc_id=doc_id, limit=limit)
 
 
@@ -35,6 +41,9 @@ def ingest_documents(
     replace_source: str | None = None,
     default_id: str = "document",
 ) -> KnowledgeSnapshot:
+    """
+    将 Document 列表写入 向量数据库
+    """
     usable = [document for document in documents if document.text.strip()]
     if not usable:
         raise BusinessException("没有可导入的知识内容")
@@ -63,6 +72,9 @@ def ingest_documents(
 
 
 def delete_document(doc_id: str) -> KnowledgeSnapshot:
+    """
+    删除 向量数据库中 指定文档的所有文档块
+    """
     name = (doc_id or "").strip()
     if not name:
         raise BusinessException("请指定要删除的文档")
@@ -74,6 +86,9 @@ def delete_document(doc_id: str) -> KnowledgeSnapshot:
 
 
 def _resolve_params(size: int | None, overlap: int | None) -> ChunkParams:
+    """
+    解析 文档块 参数，确保参数在合理范围内
+    """
     global _current_params
     current = _current_params or default_chunk_params()
     resolved_size = size if size is not None else current.size
@@ -86,6 +101,9 @@ def _resolve_params(size: int | None, overlap: int | None) -> ChunkParams:
 
 
 def _delete_source(source_id: str) -> None:
+    """
+    删除 向量数据库中 指定来源的所有文档
+    """
     if not source_id:
         return
     store = get_store()

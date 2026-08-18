@@ -3,7 +3,7 @@
 import pytest
 from llama_index.core import Document
 
-from app.services.knowledge.operations import ingest_documents
+from app.services.knowledge.shared import ingest_documents
 from infra.rag.runtime import get_retriever
 from infra.rag.sources import UploadFileLoader
 
@@ -23,6 +23,8 @@ def test_load_upload_document_markdown():
         "policy.md", b"# Leave\n\nCompany leave is 10 days."
     )
     assert document.doc_id == "policy.md"
+    assert document.metadata["source_id"] == "policy.md"
+    assert document.metadata["source_uri"] == "file://policy.md"
     assert "10 days" in document.text
 
 

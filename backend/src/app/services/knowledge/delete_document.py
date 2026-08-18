@@ -1,4 +1,4 @@
-from app.services.knowledge.operations import delete_document
+from app.services.knowledge.shared import delete_document
 from domain.models.knowledge import KnowledgeSnapshot
 from infra.logger import logger
 

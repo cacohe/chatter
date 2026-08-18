@@ -1,7 +1,7 @@
-from app.services.knowledge.operations import ingest_documents
+from app.services.knowledge.shared import ingest_documents
 from domain.exceptions import BusinessException
 from domain.models.knowledge import KnowledgeSnapshot
-from infra.rag.sources import LlamaDatabaseLoader
+from infra.rag.sources import DatabaseLoader
 
 
 class SyncDatabase:
@@ -16,7 +16,7 @@ class SyncDatabase:
         overlap: int | None = None,
     ) -> KnowledgeSnapshot:
         try:
-            documents = LlamaDatabaseLoader().load(uri, query)
+            documents = DatabaseLoader().load(uri, query)
         except BusinessException:
             raise
         except ValueError as exc:
