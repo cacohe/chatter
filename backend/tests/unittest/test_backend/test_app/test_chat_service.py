@@ -304,7 +304,9 @@ class TestCitableChunksAlignment:
         chunks = [
             TextNode(text="no name", metadata={"doc_name": "", "chunk_index": 0}),
             TextNode(text="has name", metadata={"doc_name": "a.md", "chunk_index": 0}),
-            TextNode(text="also named", metadata={"doc_name": "b.md", "chunk_index": 1}),
+            TextNode(
+                text="also named", metadata={"doc_name": "b.md", "chunk_index": 1}
+            ),
         ]
         numbered = _citable_chunks(chunks)
         assert len(numbered) == 2

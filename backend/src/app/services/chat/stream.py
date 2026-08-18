@@ -95,7 +95,9 @@ def validate_citations(response: str, citations: list[Citation]) -> list[Citatio
         logger.warning("回答中出现无效引用编号: %s", sorted(invalid))
     validated: list[Citation] = []
     for citation in citations:
-        validated.append(citation.model_copy(update={"used": citation.index in cited_indices}))
+        validated.append(
+            citation.model_copy(update={"used": citation.index in cited_indices})
+        )
     return validated
 
 
