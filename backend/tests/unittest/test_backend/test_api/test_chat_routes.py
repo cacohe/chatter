@@ -68,7 +68,7 @@ class TestChatRoutes:
         assert response.status_code == 200
         assert response.json() == {
             "session_id": "s1",
-            "messages": [{"role": "user", "content": "已保存的问题"}],
+            "messages": [{"role": "user", "content": "已保存的问题", "citations": []}],
         }
 
     def test_get_messages_requires_session_id(self, client):

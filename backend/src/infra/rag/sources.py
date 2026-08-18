@@ -14,7 +14,13 @@ from llama_index.readers.database import DatabaseReader
 from llama_index.readers.web import SimpleWebPageReader
 
 from infra.logger import logger
-from infra.rag.identity import database_source_id, slug, web_source_id
+from infra.rag.identity import (
+    canonicalize_url,
+    database_source_id,
+    hide_uri_password,
+    slug,
+    web_source_id,
+)
 
 SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown", ".pdf"}
 
@@ -91,7 +97,11 @@ def _to_documents(
     items: list[tuple[str, str, str]],
 ) -> list[Document]:
     return [
-        Document(text=text, doc_id=doc_id, metadata={"source_id": source_id})
+        Document(
+            text=text,
+            doc_id=doc_id,
+            metadata={"source_id": source_id, "source_type": "web"},
+        )
         for doc_id, text, source_id in items
     ]
 
@@ -108,7 +118,12 @@ class UploadFileLoader:
         text = _extract_text(suffix, content).strip()
         if not text:
             raise ValueError("未能从文件中读取到文本内容")
-        return Document(text=text, doc_id=safe_name)
+        # 文件来源的引用信息直接绑定文件名，便于前端展示“来源文件”。
+        return Document(
+            text=text,
+            doc_id=safe_name,
+            metadata={"source_type": "file", "source_uri": f"file://{safe_name}"},
+        )
 
 
 def _extract_text(suffix: str, content: bytes) -> str:
@@ -128,6 +143,8 @@ def _extract_text(suffix: str, content: bytes) -> str:
 
 class LlamaWebLoader:
     def load(self, url: str) -> list[Document]:
+        # 统一 URL 形式，避免同一网页因大小写/fragment 差异出现多个来源。
+        normalized_url = canonicalize_url(url)
         source_id = web_source_id(url)
         try:
             documents = HeaderWebPageReader(
@@ -155,7 +172,10 @@ class LlamaWebLoader:
                 for index, (_, text, _) in enumerate(usable)
             ]
         logger.info(f"Loaded {len(named)} documents from web page {url}")
-        return _to_documents(named)
+        documents_out = _to_documents(named)
+        for document in documents_out:
+            document.metadata["source_uri"] = normalized_url
+        return documents_out
 
 
 class LlamaDatabaseLoader:
@@ -179,6 +199,9 @@ class LlamaDatabaseLoader:
                 name = f"{source_id}/{len(named)}"
             document.doc_id = name
             document.metadata["source_id"] = source_id
+            document.metadata["source_type"] = "database"
+            # 仅暴露脱敏后的连接串，避免把明文密码带到引用面板。
+            document.metadata["source_uri"] = hide_uri_password(uri)
             named.append(document)
         logger.info(f"Loaded {len(named)} documents from database")
         return named

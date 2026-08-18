@@ -106,7 +106,14 @@ class Client:
         except Exception:
             logger.exception("LlamaIndex Qdrant retrieve failed")
             return []
-        return [result.node for result in results]
+        nodes: list[TextNode] = []
+        for result in results:
+            node = result.node
+            # 评分在系统侧保存一份，后续可用于来源排序与阈值过滤。
+            if result.score is not None:
+                node.metadata["score"] = float(result.score)
+            nodes.append(node)
+        return nodes
 
     def reset(self) -> None:
         name = self._collection

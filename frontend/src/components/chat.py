@@ -6,6 +6,53 @@ from logger import logger
 from logic.session import session_logic
 
 
+def _render_citations(message: dict) -> None:
+    """渲染回答的参考来源面板。
+
+    根据 used 字段区分「已引用」与「检索到但未引用」两组，
+    帮助用户判断回答的证据覆盖情况。
+    """
+    citations = message.get("citations") or []
+    if not citations:
+        return
+    # 按校验结果分三组：已引用 / 未引用 / 未校验
+    used = [c for c in citations if c.get("used") is True]
+    unused = [c for c in citations if c.get("used") is False]
+    unvalidated = [c for c in citations if c.get("used") is None]
+
+    with st.expander("参考来源", expanded=False):
+        if used:
+            for citation in used:
+                _render_single_citation(citation)
+        if unused:
+            st.divider()
+            st.caption("以下来源已检索到但未被回答引用：")
+            for citation in unused:
+                _render_single_citation(citation)
+        if unvalidated:
+            st.divider()
+            st.caption("以下来源未经引用校验：")
+            for citation in unvalidated:
+                _render_single_citation(citation)
+
+
+def _render_single_citation(citation: dict) -> None:
+    """渲染单条引用信息：编号、文档名、来源地址、相关度、摘要。"""
+    doc_name = citation.get("doc_name") or "未知来源"
+    chunk_index = int(citation.get("chunk_index") or 0) + 1
+    st.caption(f"[{citation.get('index')}] {doc_name} · 第 {chunk_index} 块")
+    source_uri = citation.get("source_uri") or ""
+    score = citation.get("score")
+    # 来源链接与相关度是机器生成的证据信息，单独展示便于人工核验。
+    if source_uri:
+        st.caption(f"来源地址：{source_uri}")
+    if isinstance(score, int | float):
+        st.caption(f"相关度：{float(score):.4f}")
+    snippet = citation.get("snippet") or ""
+    if snippet:
+        st.text(snippet)
+
+
 def _render_chat_history():
     try:
         messages = session_logic.load_display_history()
@@ -20,6 +67,8 @@ def _render_chat_history():
             role = role.value
         with st.chat_message(str(role)):
             st.markdown(msg.get("content") or "")
+            if str(role) == "assistant":
+                _render_citations(msg)
 
 
 def _render_chat_content():

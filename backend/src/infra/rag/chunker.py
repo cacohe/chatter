@@ -23,6 +23,11 @@ class SentenceChunker:
                 continue
             node.metadata["doc_name"] = document.doc_id
             node.metadata["chunk_index"] = index
+            # 透传来源元信息，便于问答阶段生成结构化引用。
+            for key in ("source_uri", "source_type", "source_id"):
+                value = document.metadata.get(key)
+                if value:
+                    node.metadata[key] = value
             node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(
                 node_id=document.doc_id
             )
