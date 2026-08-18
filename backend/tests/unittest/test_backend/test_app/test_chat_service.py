@@ -235,7 +235,7 @@ def test_build_citations():
     assert citations[0].score == 0.42
 
 
-def _make_citation(index: int, doc_name: str = "doc.md") -> "Citation":
+def _make_citation(index: int, doc_name: str = "doc.md"):
     from domain.models.chat import Citation
 
     return Citation(

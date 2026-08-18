@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from llama_index.core.schema import TextNode
 
 from domain.exceptions import BusinessException
-from domain.models.chat import Citation, ChatMessage, MessageRole
+from domain.models.chat import ChatMessage, Citation, MessageRole
 from infra.chat import history, memory
 from infra.config import settings
 from infra.llm.client import stream_chat
