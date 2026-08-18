@@ -13,7 +13,7 @@ st.set_page_config(page_title="知识库问答", layout="wide")
 
 def main():
     try:
-        # 子组件通过该标记请求整页刷新（例如入库成功后的 toast）
+        # 子组件通过该标记请求整页刷新（开启新聊天、聊天流式结束后的历史对账）
         st.session_state["_needs_rerun"] = False
 
         render_header()

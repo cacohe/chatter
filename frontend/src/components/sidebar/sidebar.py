@@ -21,23 +21,8 @@ def _load_knowledge_summary() -> dict | None:
         return None
 
 
-def _mark_success(message: str) -> None:
-    # Streamlit rerun 会清掉瞬时 toast，先写入 session 再在下一轮显示
-    st.session_state["_kb_notice"] = message
-    st.session_state["_needs_rerun"] = True
-
-
-def _show_kb_notice() -> None:
-    message = st.session_state.pop("_kb_notice", None)
-    if message:
-        st.success(message)
-
-
 def _chunk_controls(summary: dict | None) -> tuple[int, int]:
     if summary:
-        st.caption(
-            f"{summary['document_count']} 个文档 · {summary['chunk_count']} 个分块"
-        )
         size_default = int(summary.get("chunk_size", 500))
         overlap_default = int(summary.get("chunk_overlap", 50))
     else:
@@ -67,7 +52,15 @@ def _chunk_controls(summary: dict | None) -> tuple[int, int]:
     return int(chunk_size), int(chunk_overlap)
 
 
-def _render_file_source(chunk_size: int, chunk_overlap: int) -> None:
+def _render_summary_caption(summary: dict | None) -> None:
+    """文档/分块计数。须在入库动作之后渲染，才能反映最新状态。"""
+    if not summary:
+        return
+    st.caption(f"{summary['document_count']} 个文档 · {summary['chunk_count']} 个分块")
+
+
+def _render_file_source(chunk_size: int, chunk_overlap: int) -> bool:
+    """上传并入库；返回是否成功，调用方据此刷新摘要与预览。"""
     uploaded_files = st.file_uploader(
         "上传文档",
         type=["pdf", "md", "markdown", "txt"],
@@ -76,10 +69,10 @@ def _render_file_source(chunk_size: int, chunk_overlap: int) -> None:
     )
     upload_clicked = st.button("上传并入库", use_container_width=True)
     if not upload_clicked:
-        return
+        return False
     if not uploaded_files:
         st.error("请先选择要上传的文件")
-        return
+        return False
     try:
         files = [(f.name, f.getvalue()) for f in uploaded_files]
         result = backend_api_client.knowledge.upload_files(
@@ -87,14 +80,17 @@ def _render_file_source(chunk_size: int, chunk_overlap: int) -> None:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
         )
-        _mark_success(
+        st.toast(
             f"上传成功：{result['document_count']} 个文档，{result['chunk_count']} 个分块"
         )
+        return True
     except Exception as e:
         st.error(f"上传失败: {e}")
+        return False
 
 
-def _render_database_source(chunk_size: int, chunk_overlap: int) -> None:
+def _render_database_source(chunk_size: int, chunk_overlap: int) -> bool:
+    """从数据库同步；返回是否成功，调用方据此刷新摘要与预览。"""
     uri = st.text_input(
         "数据库连接",
         placeholder="sqlite:///./data/source.db",
@@ -109,7 +105,7 @@ def _render_database_source(chunk_size: int, chunk_overlap: int) -> None:
     if st.button("从数据库同步", use_container_width=True):
         if not uri.strip() or not query.strip():
             st.error("请填写数据库连接和查询语句")
-            return
+            return False
         try:
             result = backend_api_client.knowledge.sync_database(
                 uri.strip(),
@@ -117,15 +113,19 @@ def _render_database_source(chunk_size: int, chunk_overlap: int) -> None:
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
             )
-            _mark_success(
+            st.toast(
                 f"同步成功：{result['document_count']} 个文档，"
                 f"{result['chunk_count']} 个分块"
             )
+            return True
         except Exception as e:
             st.error(f"同步失败: {e}")
+            return False
+    return False
 
 
-def _render_web_source(chunk_size: int, chunk_overlap: int) -> None:
+def _render_web_source(chunk_size: int, chunk_overlap: int) -> bool:
+    """从网页导入；返回是否成功，调用方据此刷新摘要与预览。"""
     url = st.text_input(
         "网页链接",
         placeholder="https://example.com/article",
@@ -134,19 +134,22 @@ def _render_web_source(chunk_size: int, chunk_overlap: int) -> None:
     if st.button("从网页导入", use_container_width=True):
         if not url.strip():
             st.error("请填写网页链接")
-            return
+            return False
         try:
             result = backend_api_client.knowledge.ingest_web(
                 url.strip(),
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
             )
-            _mark_success(
+            st.toast(
                 f"导入成功：{result['document_count']} 个文档，"
                 f"{result['chunk_count']} 个分块"
             )
+            return True
         except Exception as e:
             st.error(f"导入失败: {e}")
+            return False
+    return False
 
 
 def _render_preview(summary: dict | None) -> None:
@@ -173,10 +176,12 @@ def _render_preview(summary: dict | None) -> None:
             ):
                 try:
                     backend_api_client.knowledge.delete_document(name)
-                    _mark_success(f"已删除：{name}")
                 except Exception as e:
                     st.error(f"删除失败: {e}")
-                continue
+                    continue
+                # 删除成功后立即整页刷新：文档从列表消失本身就是反馈，
+                # 且刷新后的摘要/预览才是最新状态（st.toast 会被 rerun 清掉，故不用）
+                st.rerun()
             items = chunks_by_doc.get(name) or []
             if not items:
                 st.caption("暂无分块预览")
@@ -190,18 +195,24 @@ def _render_preview(summary: dict | None) -> None:
 
 def _render_knowledge_panel():
     st.markdown("### 知识库")
-    _show_kb_notice()
+    # 参数输入在前：动作执行时需要用到
     summary = _load_knowledge_summary()
     chunk_size, chunk_overlap = _chunk_controls(summary)
 
+    # 动作区在摘要显示之前执行；成功后同一次运行内即可看到最新数据，无需 rerun
     file_tab, db_tab, web_tab = st.tabs(["文件", "数据库", "网页"])
+    changed = False
     with file_tab:
-        _render_file_source(chunk_size, chunk_overlap)
+        changed |= _render_file_source(chunk_size, chunk_overlap)
     with db_tab:
-        _render_database_source(chunk_size, chunk_overlap)
+        changed |= _render_database_source(chunk_size, chunk_overlap)
     with web_tab:
-        _render_web_source(chunk_size, chunk_overlap)
+        changed |= _render_web_source(chunk_size, chunk_overlap)
 
+    # 入库/导入成功后摘要已变化，重新拉取；无动作时复用上方快照
+    if changed:
+        summary = _load_knowledge_summary()
+    _render_summary_caption(summary)
     _render_preview(summary)
 
 
