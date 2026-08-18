@@ -273,7 +273,9 @@ def _node_doc_id(node: TextNode) -> str:
     return str(value) if value else ""
 
 
-def _node_metadata(payload: dict[str, Any], doc_id: str, chunk_index: int) -> dict[str, Any]:
+def _node_metadata(
+    payload: dict[str, Any], doc_id: str, chunk_index: int
+) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "doc_id": doc_id,
         "doc_name": str(payload.get("doc_name") or doc_id),
