@@ -1,6 +1,6 @@
 # RAG 知识问答
 
-基于 FastAPI + Streamlit 的**一次性本地 RAG 知识问答**：无需登录、无长期记忆。知识可来自 PDF / Markdown 文件、数据库同步或网页；对话的完整展示历史由后端保存、前端经 API 拉取渲染，给模型用的短期上下文是后端另一份按条数截断的记忆，二者分开。
+基于 FastAPI + Streamlit 的**RAG 知识问答系统**：无需登录、无长期记忆。知识可来自 PDF / Markdown 文件、数据库同步或网页；对话的完整展示历史仅在内存中、无持久化。
 
 ## 技术栈
 
@@ -45,10 +45,10 @@ cp frontend/.env.example frontend/.env.local
 
 ```bash
 # 后端
-cd backend &&  uv run python -m main
+cd backend && PYTHONPATH=src uv run python src/main.py
 
 # 前端
-cd frontend &&  uv run streamlit run src/main.py
+cd frontend && uv run streamlit run src/main.py
 ```
 
 ## Render 部署
@@ -58,7 +58,7 @@ cd frontend &&  uv run streamlit run src/main.py
 ```bash
 cd backend
 uv sync
-uv run python -m main
+PYTHONPATH=src uv run python -m main
 ```
 
 环境变量见 `backend/.env.example`。生产保持 `RELOAD=false`；云平台 `PORT` 优先生效。探活：`GET /health`。
