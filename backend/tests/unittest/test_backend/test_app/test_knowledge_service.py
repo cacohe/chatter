@@ -215,10 +215,8 @@ class TestKnowledgeUseCases:
                 return_value=[(0, 0, 0, "", ("93.184.216.34", 0))],
             ),
             patch(
-                "infra.rag.sources.WebLoader._HeaderWebPageReader.load_data",
-                return_value=[
-                    Document(text="x" * 11, metadata={"url": "https://example.com"})
-                ],
+                "infra.rag.sources.WebLoader._fetch_page",
+                return_value="x" * 11,
             ),
         ):
             with pytest.raises(BusinessException, match="网页正文超过长度上限"):

@@ -50,6 +50,7 @@ class TestKnowledgeRoutes:
         chunks = response.json()
         assert len(chunks) >= 1
         assert "content" in chunks[0]
+        assert "年假" in chunks[0]["content"] or "10" in chunks[0]["content"]
 
     def test_delete_document(self, client: TestClient):
         response = client.delete(

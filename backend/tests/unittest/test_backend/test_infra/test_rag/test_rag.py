@@ -1,9 +1,13 @@
 """Tests for RAG ingest, file parsing, and retrieval."""
 
+import json
+from unittest.mock import patch
+
 import pytest
 from llama_index.core import Document
 
 from app.services.knowledge.shared import ingest_documents
+from infra.qdrant.client import get_qdrant_client
 from infra.rag.runtime import get_retriever
 from infra.rag.sources import UploadFileLoader
 
@@ -57,6 +61,27 @@ def test_load_upload_document_rejects_unknown_type():
 def test_load_upload_document_rejects_empty():
     with pytest.raises(ValueError, match="未能从文件中读取到文本内容"):
         UploadFileLoader().load("empty.md", b"   ")
+
+
+def test_list_chunks_reads_text_nested_in_node_content():
+    payload = {
+        "doc_id": "leave.md",
+        "doc_name": "leave.md",
+        "chunk_index": 3,
+        "_node_content": json.dumps(
+            {
+                "text": "公司年假 10 天。",
+                "metadata": {"doc_name": "leave.md", "chunk_index": 3},
+            },
+            ensure_ascii=False,
+        ),
+    }
+    client = get_qdrant_client()
+    with patch.object(client, "_iter_points", return_value=[("1", payload)]):
+        nodes = client.list_chunks(limit=10)
+    assert len(nodes) == 1
+    assert nodes[0].get_content() == "公司年假 10 天。"
+    assert nodes[0].metadata["chunk_index"] == 3
 
 
 def test_retrieve_leave_policy():

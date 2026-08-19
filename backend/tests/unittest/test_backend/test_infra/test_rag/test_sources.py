@@ -1,7 +1,7 @@
 """Tests for database / web knowledge sources."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from llama_index.core import Document
@@ -45,8 +45,8 @@ def test_load_web_documents():
             return_value=_public_dns(),
         ),
         patch(
-            "infra.rag.sources.WebLoader._HeaderWebPageReader.load_data",
-            return_value=[page],
+            "infra.rag.sources.WebLoader._fetch_page",
+            return_value=page.text,
         ),
     ):
         documents = WebLoader().load("https://example.com/leave")
@@ -64,8 +64,8 @@ def test_load_web_documents_rejects_loading_shell():
             return_value=_public_dns(),
         ),
         patch(
-            "infra.rag.sources.WebLoader._HeaderWebPageReader.load_data",
-            return_value=[shell],
+            "infra.rag.sources.WebLoader._fetch_page",
+            return_value=shell.text,
         ),
     ):
         with pytest.raises(ValueError, match="未能从网页解析出正文"):
@@ -79,8 +79,8 @@ def test_load_web_documents_rejects_empty():
             return_value=_public_dns(),
         ),
         patch(
-            "infra.rag.sources.WebLoader._HeaderWebPageReader.load_data",
-            return_value=[Document(text="   ")],
+            "infra.rag.sources.WebLoader._fetch_page",
+            return_value="   ",
         ),
     ):
         with pytest.raises(ValueError, match="未能从网页解析出正文"):
@@ -94,12 +94,28 @@ def test_load_web_documents_reader_failure():
             return_value=_public_dns(),
         ),
         patch(
-            "infra.rag.sources.WebLoader._HeaderWebPageReader.load_data",
+            "infra.rag.sources.WebLoader._fetch_page",
             side_effect=RuntimeError("blocked"),
         ),
     ):
         with pytest.raises(ValueError, match="未能从网页解析出正文"):
             WebLoader().load("https://example.com/leave")
+
+
+def test_fetch_page_uses_headers_skips_redirects_and_fixes_encoding():
+    response = MagicMock()
+    response.status_code = 200
+    response.encoding = "ISO-8859-1"
+    response.apparent_encoding = "utf-8"
+    response.text = "<p>公司年假 10 天。</p>"
+    with patch("infra.rag.sources.requests.get", return_value=response) as mock_get:
+        text = WebLoader()._fetch_page("https://example.com/leave")
+
+    kwargs = mock_get.call_args.kwargs
+    assert kwargs["headers"]["User-Agent"].startswith("Mozilla/5.0")
+    assert kwargs["allow_redirects"] is False
+    assert response.encoding == "utf-8"
+    assert "年假" in text
 
 
 def test_web_source_id_is_url_not_host():

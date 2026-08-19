@@ -1,5 +1,6 @@
 """统一的 Qdrant 客户端：连接、入库、列举、按文档删除、检索。"""
 
+import json
 from typing import Any
 
 from llama_index.core import VectorStoreIndex
@@ -264,8 +265,39 @@ def _payload_chunk_index(payload: dict[str, Any]) -> int:
 
 
 def _payload_text(payload: dict[str, Any]) -> str:
+    """正文在顶层 `text`，或只在 LlamaIndex 的 `_node_content` JSON 里。"""
     value = payload.get("text")
+    if isinstance(value, str) and value:
+        return value
+    nested = _text_from_node_content(payload.get("_node_content"))
+    if nested:
+        return nested
     return str(value) if value is not None else ""
+
+
+def _text_from_node_content(raw: Any) -> str:
+    if not isinstance(raw, str):
+        return ""
+    try:
+        node = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(node, dict):
+        return ""
+    text = node.get("text")
+    if isinstance(text, str) and text:
+        return text
+    resource = node.get("text_resource")
+    if isinstance(resource, dict):
+        inner = resource.get("text")
+        if isinstance(inner, str) and inner:
+            return inner
+    metadata = node.get("metadata")
+    if isinstance(metadata, dict):
+        nested = metadata.get("text")
+        if isinstance(nested, str) and nested:
+            return nested
+    return ""
 
 
 def _node_doc_id(node: TextNode) -> str:

@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+import html2text
 import pypdf
+import requests
 from llama_index.core import Document
-from llama_index.core.bridge.pydantic import PrivateAttr
 from llama_index.readers.database import DatabaseReader
-from llama_index.readers.web import SimpleWebPageReader
 
 from infra.config import settings
 from infra.logger import logger
@@ -65,14 +65,15 @@ class UploadFileLoader:
             raise ValueError("无效的文件名")
         return safe_name
 
-    def source_uri(self, filename: str) -> str:
-        return f"file://{self.source_id(filename)}"
+    def source_uri(self, doc_id: str) -> str:
+        return f"file://{doc_id}"
 
     def load(self, filename: str, content: bytes) -> Document:
         suffix = Path(filename).suffix.lower()
         if suffix not in self._SUPPORTED_SUFFIXES:
             raise ValueError(f"不支持的文件类型: {suffix or '(无扩展名)'}")
         doc_id = self.source_id(filename)
+        source_uri = self.source_uri(doc_id)
 
         text = self._extract_text(suffix, content).strip()
         if not text:
@@ -83,7 +84,7 @@ class UploadFileLoader:
             metadata={
                 "source_type": "file",
                 "source_id": doc_id,
-                "source_uri": f"file://{doc_id}",
+                "source_uri": source_uri,
             },
         )
 
@@ -125,42 +126,6 @@ class WebLoader:
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
 
-    class _HeaderWebPageReader(SimpleWebPageReader):
-        """SimpleWebPageReader 默认不带 UA；此处补浏览器头并修正编码。"""
-
-        _headers: dict[str, str] = PrivateAttr(default_factory=dict)
-
-        def __init__(self, headers: dict[str, str] | None = None, **kwargs) -> None:
-            super().__init__(**kwargs)
-            self._headers = headers or {}
-
-        def load_data(self, urls: list[str]) -> list[Document]:
-            import llama_index.readers.web.simple_web.base as web_base
-
-            original_get = web_base.requests.get
-            headers = self._headers
-
-            def get_with_headers(url: str, **kwargs):
-                merged = {**headers, **(kwargs.pop("headers", None) or {})}
-                # 禁止跟随跳转，避免校验过的公网 URL 再被重定向到内网。
-                kwargs.pop("allow_redirects", None)
-                response = original_get(
-                    url,
-                    headers=merged or None,
-                    allow_redirects=False,
-                    **kwargs,
-                )
-                encoding = response.encoding
-                if not encoding or encoding.lower() == "iso-8859-1":
-                    response.encoding = response.apparent_encoding or "utf-8"
-                return response
-
-            web_base.requests.get = get_with_headers
-            try:
-                return super().load_data(urls)
-            finally:
-                web_base.requests.get = original_get
-
     def source_id(self, url: str) -> str:
         """同一规范化 URL 共用一个来源 ID。"""
         canonical = self.source_uri(url)
@@ -187,14 +152,9 @@ class WebLoader:
         normalized_url = self.source_uri(safe_url)
         source_id = self.source_id(safe_url)
         try:
-            documents = self._HeaderWebPageReader(
-                html_to_text=True,
-                fail_on_error=True,
-                timeout=settings.rag_settings.web_fetch_timeout_seconds,
-                headers=self._HEADERS,
-            ).load_data([safe_url])
+            documents = [Document(text=self._fetch_page(safe_url))]
         except Exception as exc:
-            logger.warning(f"SimpleWebPageReader failed for {safe_url}: {exc}")
+            logger.warning(f"Web fetch failed for {safe_url}: {exc}")
             documents = []
 
         usable: list[tuple[str, str, str]] = []
@@ -242,6 +202,21 @@ class WebLoader:
             if _is_blocked_ip(sockaddr[0]):
                 raise ValueError(self._PRIVATE_HOST_ERROR)
         return raw
+
+    def _fetch_page(self, url: str) -> str:
+        """带 UA 抓取页面；不跟随跳转，避免校验过的公网 URL 再被重定向到内网。"""
+        response = requests.get(
+            url,
+            headers=self._HEADERS,
+            timeout=settings.rag_settings.web_fetch_timeout_seconds,
+            allow_redirects=False,
+        )
+        if response.status_code != 200:
+            raise ValueError(f"抓取失败，HTTP {response.status_code}")
+        encoding = response.encoding
+        if not encoding or encoding.lower() == "iso-8859-1":
+            response.encoding = response.apparent_encoding or "utf-8"
+        return html2text.html2text(response.text)
 
     def _is_placeholder_page(self, text: str) -> bool:
         """过滤“载入中 / 请开启 JavaScript”这类壳页面。"""
